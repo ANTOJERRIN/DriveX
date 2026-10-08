@@ -72,7 +72,7 @@ export async function login(email, password) {
   save(value);
 }
 export async function signup(name, email, password, phone) {
-  const value = await request("/auth/v1/signup", {
+  const value = await request("/auth/v1/signup?redirect_to=" + encodeURIComponent(location.origin + "/"), {
     email,
     password,
     data: { name, phone },
