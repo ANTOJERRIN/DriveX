@@ -1,7 +1,8 @@
 -- DriveX v1. Apply once to a dedicated Supabase project.
 -- No sample records. All persistent operations are authorized in one transaction.
 begin;
-create extension if not exists btree_gist;
+create schema if not exists extensions;
+create extension if not exists btree_gist with schema extensions;
 create schema drivex_private;
 revoke all on schema drivex_private from public,anon,authenticated;
 grant usage on schema drivex_private to authenticated;
