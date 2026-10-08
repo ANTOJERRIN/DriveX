@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
-import { verifyWebhookSignature } from "../supabase/functions/razorpay-webhook/index.ts";
+import { verifyWebhookSignature } from "../supabase/functions/_shared/crypto.mjs";
 
 const ids = {
   admin: "00000000-0000-0000-0000-000000000001",

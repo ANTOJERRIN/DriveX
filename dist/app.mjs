@@ -251,13 +251,67 @@ function resources() {
     items = team ? state.instructors : state.vehicles;
   return `${intro(team ? "Your instructor team." : "Your training fleet.", team ? "Assign instructor access to an existing DriveX account." : "Add vehicles that students can book.", `<button class="primary" id="add-resource">Add ${team ? "instructor" : "vehicle"}</button>`)}<div class="cards">${items.map((i) => `<article class="resource"><div class="avatar">${initials(i.name)}</div><h2>${esc(i.name)}</h2><p>${esc(team ? i.specialty : i.transmission)}</p><p>${esc(team ? i.phone : i.reg)}</p><span class="tag">Active</span></article>`).join("") || '<section class="panel empty"><b>No resources added</b>Add your first resource to enable bookings.</section>'}</div>`;
 }
+async function payOnline(b) {
+  if (new Date(b.expires_at) <= new Date()) {
+    toast("This reservation has expired. Please reserve a new lesson.");
+    await reload();
+    return;
+  }
+  const button = $("#pay-online");
+  if (button) button.disabled = true;
+  try {
+    toast("Opening secure checkout…");
+    const orderData = await invokeFunction("create-order", {
+      booking_id: b.id,
+    });
+    if (!window.Razorpay) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://checkout.razorpay.com/v1/checkout.js";
+        s.onload = resolve;
+        s.onerror = () => reject(Error("Failed to load Razorpay checkout SDK."));
+        document.head.appendChild(s);
+      });
+    }
+    const rzp = new window.Razorpay({
+      key: orderData.key_id,
+      amount: orderData.amount,
+      currency: orderData.currency,
+      name: "DriveX Driving School",
+      description: "60-minute driving lesson",
+      order_id: orderData.order_id,
+      prefill: orderData.student,
+      theme: { color: "#142921" },
+      handler: async function () {
+        $("#modal").close();
+        toast("Payment authorized! Confirming your lesson…");
+        setTimeout(async () => {
+          await reload();
+          detail(b.id);
+        }, 1500);
+      },
+      modal: {
+        ondismiss: function () {
+          toast("Payment cancelled.");
+          if (button) button.disabled = false;
+        },
+      },
+    });
+    rzp.open();
+  } catch (err) {
+    toast(errorText(err));
+    if (button) button.disabled = false;
+  }
+}
 function detail(id) {
   const b = state.bookings.find((b) => b.id === id);
   if (!b) return;
+  const expired = new Date(b.expires_at) <= new Date();
   modal(
     "Lesson details",
-    `<div class="modal-body">${tag(b.status)}<h3>${date(b.date)} · ${b.time} IST</h3><p class="sub">Student: ${esc(b.student)}${b.student_phone ? "<br>Contact: " + esc(b.student_phone) : ""}<br>Instructor: ${who(b.instructor)}<br>Vehicle: ${esc(car(b.vehicle)?.name)}<br>Lesson price: ${money(b.amount)}</p>${b.status === "pending" ? `<div class="hint">Pay the school directly. This reservation expires at ${new Date(b.expires_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST. Only the administrator can confirm receipt.</div>` : ""}${b.score ? `<div class="feedback"><b>${b.score}/10</b><p>${esc(b.notes)}</p></div>` : ""}<p class="error" role="alert"></p><div class="modal-actions">${role() === "admin" && b.status === "pending" ? '<button class="primary" id="record-payment">Record received payment</button>' : ""}${role() === "admin" && b.status === "cancellation_requested" ? '<button class="primary" id="record-refund">Record completed refund</button>' : ""}${role() === "instructor" && b.status === "confirmed" && new Date(b.ends_at) <= new Date() ? '<button class="primary" id="assessment">Add assessment</button>' : ""}${role() !== "instructor" && ["pending", "confirmed"].includes(b.status) ? '<button class="danger" id="cancel">Cancel lesson</button>' : ""}</div></div>`,
+    `<div class="modal-body">${tag(b.status)}<h3>${date(b.date)} · ${b.time} IST</h3><p class="sub">Student: ${esc(b.student)}${b.student_phone ? "<br>Contact: " + esc(b.student_phone) : ""}<br>Instructor: ${who(b.instructor)}<br>Vehicle: ${esc(car(b.vehicle)?.name)}<br>Lesson price: ${money(b.amount)}</p>${b.status === "pending" ? `<div class="hint">${expired ? "This reservation has expired. Please reserve a new lesson." : "Pay online with Razorpay or pay the school directly. Reservation expires at " + new Date(b.expires_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) + " IST."}</div>` : ""}${b.score ? `<div class="feedback"><b>${b.score}/10</b><p>${esc(b.notes)}</p></div>` : ""}<p class="error" role="alert"></p><div class="modal-actions">${role() === "student" && b.status === "pending" && !expired ? '<button class="primary" id="pay-online">Pay Online (₹800)</button>' : ""}${role() === "admin" && b.status === "pending" ? '<button class="primary" id="record-payment">Record received payment</button>' : ""}${role() === "admin" && b.status === "cancellation_requested" ? '<button class="primary" id="record-refund">Record completed refund</button>' : ""}${role() === "instructor" && b.status === "confirmed" && new Date(b.ends_at) <= new Date() ? '<button class="primary" id="assessment">Add assessment</button>' : ""}${role() !== "instructor" && ["pending", "confirmed"].includes(b.status) ? '<button class="danger" id="cancel">Cancel lesson</button>' : ""}</div></div>`,
   );
+  if ($("#pay-online")) $("#pay-online").onclick = () => payOnline(b);
   if ($("#record-payment"))
     $("#record-payment").onclick = () => receipt(b, "record_payment");
   if ($("#record-refund"))

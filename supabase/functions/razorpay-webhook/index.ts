@@ -1,32 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-
-// Helper function to verify Razorpay HMAC SHA256 webhook signature
-export async function verifyWebhookSignature(
-  rawBody: string,
-  signature: string,
-  secret: string
-): Promise<boolean> {
-  if (!signature || !secret) return false;
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signatureBytes = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(rawBody)
-  );
-  const hashArray = Array.from(new Uint8Array(signatureBytes));
-  const expectedSignature = hashArray
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  return expectedSignature.toLowerCase() === signature.toLowerCase();
-}
+import { verifyWebhookSignature } from "../_shared/crypto.mjs";
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
