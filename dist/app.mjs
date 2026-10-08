@@ -47,6 +47,7 @@ let state = null,
   times = [],
   courseLessons = [],
   myPayments = [],
+  instructorLearners = [],
   draft = { date: today(), time: "", instructor: "", vehicle: "" },
   busy = false,
   door = "learner",
@@ -117,6 +118,10 @@ async function reload() {
     } catch {}
     try {
       myPayments = await rpc("my_payments");
+    } catch {}
+  } else if (role() === "instructor") {
+    try {
+      instructorLearners = (await rpc("instructor_learners")) || [];
     } catch {}
   }
   if (state.instructors?.length && !draft.instructor) {
