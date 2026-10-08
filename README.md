@@ -4,9 +4,11 @@ Driving-school management with Supabase authentication and persistent Postgres o
 
 ## Current deployment status
 
-The frontend and tested backend code are implemented. The dedicated DriveX Supabase project has **not been provisioned**: the connected Supabase tool returned `UNAVAILABLE` for its required `get_cost` operation. `dist/config.mjs` is intentionally empty, and the published app displays a connection-required screen. It does not pretend to save data.
+Connected to the dedicated **Drivex** project (`gakrpgdwvtfvfbvtbofu`) in **ANTOJERRIN's Org**. The initial backend schema and extension relocation migrations have been applied. The frontend uses the project's public publishable key.
 
-No unrelated Supabase project has been changed. The user selected a new project in **ANTOJERRIN's Org**.
+All four private tables have RLS enabled and no direct browser read/write privileges. The anonymous RPC is denied; authenticated calls are authorized in the dispatcher. No sample application records were inserted.
+
+The owner must still configure the Supabase Auth Site URL / redirect URLs, create and confirm their account, and bootstrap administrator access. SMTP/email delivery and a complete user booking journey remain to be verified. Online checkout is not connected; payments are recorded from actual school receipts.
 
 ## Local run and tests
 
@@ -24,16 +26,10 @@ There is no frontend build or CDN JavaScript dependency. Google Fonts is optiona
 
 ## Connect the real backend
 
-1. Create a dedicated project named **DriveX** in ANTOJERRIN's Org. Review Supabase's cost before creating it.
-2. Link and push migrations using the Supabase CLI:
-   ```sh
-   npx supabase login
-   npx supabase link --project-ref <your-project-ref>
-   npm run db:push
-   ```
-   Alternatively, run `supabase/migrations/0001_init.sql` once via the project's SQL editor. Do not apply superseded schemas from older demo commits.
+1. The dedicated **Drivex** project in ANTOJERRIN's Org is already connected.
+2. `backend/schema.sql` is already applied. Do not apply it again to the connected project. It is retained for reproducible setup in a fresh database.
 3. Configure Supabase Auth's Site URL to your deployed app URL and allow `http://localhost:3000` for local testing. Keep email confirmation enabled. Configure SMTP for reliable signup/password-reset delivery.
-4. Set `supabaseUrl` and the **publishable** key in `dist/config.mjs`. They are public client configuration. Never place a service-role/secret key in the frontend, GitHub, or chat.
+4. The project URL and **publishable** key in `dist/config.mjs` are configured. They are public client configuration. Never place a service-role/secret key in the frontend, GitHub, or chat.
 5. Deploy the configured frontend, create the owner's account, confirm email and sign in once. It initially has student access.
 6. Bootstrap the first administrator with the account's verified Auth user UUID using `backend/bootstrap-admin.sql`. The SQL deliberately requires a UUID; the first arbitrary signup never gets administrator access.
 7. Have instructors create their accounts. An admin can assign instructor access by account email, and add real training vehicles. Students can now reserve lessons.
