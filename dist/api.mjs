@@ -71,11 +71,11 @@ export async function login(email, password) {
   });
   save(value);
 }
-export async function signup(name, email, password, phone) {
+export async function signup(name, email, password, phone, role = "student", specialty = "") {
   const value = await request("/auth/v1/signup?redirect_to=" + encodeURIComponent(location.origin + "/"), {
     email,
     password,
-    data: { name, phone },
+    data: { name, phone, role, specialty },
   });
   if (value?.access_token) save(value);
   return !!value?.access_token;
