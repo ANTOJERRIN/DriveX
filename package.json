@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "python3 -m http.server 3000 --directory dist",
+    "start": "python -m http.server 3000 --directory dist",
+    "dev": "python -m http.server 3000 --directory dist",
     "test": "node --test tests/*.test.mjs",
     "check": "node --check dist/app.mjs && node --check dist/api.mjs && node --check dist/config.mjs"
   },
