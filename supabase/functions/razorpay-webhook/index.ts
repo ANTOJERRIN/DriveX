@@ -25,17 +25,18 @@ Deno.serve(async (req: Request) => {
 
     const payload = JSON.parse(rawBody);
     const event = payload.event;
+    const eventId = payload.event_id || `evt_${Date.now()}`;
 
     // Handle payment.captured or order.paid
     if (event === "payment.captured" || event === "order.paid") {
       const payment = payload.payload?.payment?.entity;
-      const bookingId = payment?.notes?.booking_id;
-      const paymentId = payment?.id;
       const orderId = payment?.order_id;
+      const paymentId = payment?.id;
+      const amountPaise = payment?.amount;
 
-      if (!bookingId || !paymentId) {
+      if (!orderId || !paymentId) {
         return new Response(
-          JSON.stringify({ message: "Ignored event: missing booking_id or payment_id" }),
+          JSON.stringify({ message: "Ignored event: missing order_id or payment_id" }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
       }
@@ -43,8 +44,8 @@ Deno.serve(async (req: Request) => {
       const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
       const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-      // Call database dispatch RPC with confirm_online_payment action
-      const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/drivex`, {
+      // Call public.confirm_payment_server RPC
+      const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/confirm_payment_server`, {
         method: "POST",
         headers: {
           apikey: supabaseServiceKey,
@@ -52,19 +53,17 @@ Deno.serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "confirm_online_payment",
-          payload: {
-            booking: bookingId,
-            payment_id: paymentId,
-            order_id: orderId,
-          },
+          p_provider_order_id: orderId,
+          p_provider_payment_id: paymentId,
+          p_amount_paise: amountPaise,
+          p_event_id: eventId,
         }),
       });
 
       if (!rpcRes.ok) {
         const error = await rpcRes.json().catch(() => ({}));
         return new Response(
-          JSON.stringify({ error: error.message || "Failed to confirm payment" }),
+          JSON.stringify({ error: error.message || "Failed to confirm payment on server" }),
           { status: 500, headers: { "Content-Type": "application/json" } }
         );
       }
@@ -76,7 +75,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    return new Response(JSON.stringify({ status: "ignored" }), {
+    return new Response(JSON.stringify({ status: "ignored", event }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

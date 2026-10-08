@@ -19,9 +19,9 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { booking_id } = await req.json();
-    if (!booking_id) {
-      return new Response(JSON.stringify({ error: "booking_id is required" }), {
+    const { enrollment_id } = await req.json();
+    if (!enrollment_id) {
+      return new Response(JSON.stringify({ error: "enrollment_id is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Call Supabase RPC to verify booking ownership and get order details securely
+    // Call Supabase RPC to verify user and get payment details
     const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/drivex`, {
       method: "POST",
       headers: {
@@ -48,21 +48,29 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        action: "get_order_details",
-        payload: { booking: booking_id },
+        action: "my_payments",
+        payload: {},
       }),
     });
 
     if (!rpcRes.ok) {
-      const err = await rpcRes.json().catch(() => ({}));
-      return new Response(
-        JSON.stringify({ error: err.message || "Failed to fetch booking details" }),
-        { status: rpcRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Failed to verify enrollment" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const bookingDetails = await rpcRes.json();
-    const amountPaise = bookingDetails.amount_paise; // Server-authoritative amount
+    const paymentsList = await rpcRes.json();
+    const targetPayment = paymentsList.find((p: any) => p.enrollment_id === enrollment_id);
+
+    if (!targetPayment) {
+      return new Response(JSON.stringify({ error: "Enrollment payment not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const amountPaise = targetPayment.amount_inr * 100;
 
     // Create Razorpay Order
     const basicAuth = btoa(`${razorpayKeyId}:${razorpayKeySecret}`);
@@ -75,10 +83,9 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         amount: amountPaise,
         currency: "INR",
-        receipt: booking_id,
+        receipt: `enr_${enrollment_id.slice(0, 16)}`,
         notes: {
-          booking_id: booking_id,
-          student_name: bookingDetails.student_name,
+          enrollment_id: enrollment_id,
         },
       }),
     });
@@ -99,11 +106,7 @@ Deno.serve(async (req: Request) => {
         amount: order.amount,
         currency: order.currency,
         key_id: razorpayKeyId,
-        student: {
-          name: bookingDetails.student_name,
-          phone: bookingDetails.student_phone,
-          email: bookingDetails.student_email,
-        },
+        plan_name: targetPayment.plan_name,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
