@@ -119,24 +119,24 @@ revoke all on drivex_private.webhook_events from public, anon, authenticated;
 
 -- 9. Server payment confirmation function
 create or replace function public.confirm_payment_server(
-  provider_order_id text,
-  provider_payment_id text,
-  amount_paise int,
-  event_id text
+  p_provider_order_id text,
+  p_provider_payment_id text,
+  p_amount_paise int,
+  p_event_id text
 ) returns jsonb language plpgsql security definer set search_path='' as $$
 declare
   v_en drivex_private.enrollments;
   v_pl drivex_private.plans;
   v_expected_paise int;
 begin
-  if event_id is not null and exists (select 1 from drivex_private.webhook_events where drivex_private.webhook_events.event_id = confirm_payment_server.event_id) then
+  if p_event_id is not null and exists (select 1 from drivex_private.webhook_events we where we.event_id = p_event_id) then
     return jsonb_build_object('status', 'success', 'idempotent', true);
   end if;
 
   select en.* into v_en
   from drivex_private.enrollments en
   join drivex_private.payments py on py.enrollment_id = en.id
-  where py.provider_order_id = confirm_payment_server.provider_order_id
+  where py.provider_order_id = p_provider_order_id
   limit 1;
 
   if not found then
@@ -145,24 +145,24 @@ begin
     where en.id::text = (
       select payload->>'enrollment_id'
       from drivex_private.webhook_events we
-      where we.event_id = confirm_payment_server.event_id
+      where we.event_id = p_event_id
     ) limit 1;
   end if;
 
   if v_en.id is null then
-    raise exception 'Enrollment order not found for order %', provider_order_id;
+    raise exception 'Enrollment order not found for order %', p_provider_order_id;
   end if;
 
-  select * into v_pl from drivex_private.plans where drivex_private.plans.id = v_en.plan_id;
+  select * into v_pl from drivex_private.plans pl where pl.id = v_en.plan_id;
   v_expected_paise := v_pl.price_inr * 100;
 
-  if amount_paise <> v_expected_paise then
-    raise exception 'Invalid amount: received % paise, expected % paise', amount_paise, v_expected_paise;
+  if p_amount_paise <> v_expected_paise then
+    raise exception 'Invalid amount: received % paise, expected % paise', p_amount_paise, v_expected_paise;
   end if;
 
-  if event_id is not null then
+  if p_event_id is not null then
     insert into drivex_private.webhook_events(event_id, provider, payload)
-    values (confirm_payment_server.event_id, 'razorpay', jsonb_build_object('order_id', provider_order_id, 'payment_id', provider_payment_id, 'amount', amount_paise))
+    values (p_event_id, 'razorpay', jsonb_build_object('order_id', p_provider_order_id, 'payment_id', p_provider_payment_id, 'amount', p_amount_paise))
     on conflict (event_id) do nothing;
   end if;
 
@@ -171,8 +171,8 @@ begin
   where drivex_private.enrollments.id = v_en.id;
 
   update drivex_private.payments
-  set status = 'paid', provider_payment_id = confirm_payment_server.provider_payment_id, paid_at = now()
-  where drivex_private.payments.enrollment_id = v_en.id and (drivex_private.payments.provider_order_id = confirm_payment_server.provider_order_id or drivex_private.payments.status = 'created');
+  set status = 'paid', provider_payment_id = p_provider_payment_id, paid_at = now()
+  where drivex_private.payments.enrollment_id = v_en.id and (drivex_private.payments.provider_order_id = p_provider_order_id or drivex_private.payments.status = 'created');
 
   return jsonb_build_object('status', 'success', 'enrollment_id', v_en.id);
 end;$$;

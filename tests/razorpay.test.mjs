@@ -96,11 +96,13 @@ grant execute on function auth.uid() to authenticated;`);
     ])).rows[0].result;
     assert.equal(res.status, "success");
 
+    await db.exec("reset role");
     const en = (await db.query("select * from drivex_private.enrollments where id=$1", [enrollmentId])).rows[0];
     assert.equal(en.status, "active");
   });
 
   await t.test("confirm_payment_server is idempotent on replayed event_id", async () => {
+    await db.exec("set role service_role");
     const res = (await db.query("select public.confirm_payment_server($1, $2, $3, $4) as result", [
       "order_" + enrollmentId,
       "pay_123",
