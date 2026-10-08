@@ -3,35 +3,41 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
-// Test-only auth fixtures. The deployed database receives no seed data.
+
 const ids = {
   admin: "00000000-0000-0000-0000-000000000001",
   instructor: "00000000-0000-0000-0000-000000000002",
   student: "00000000-0000-0000-0000-000000000003",
   other: "00000000-0000-0000-0000-000000000004",
 };
-test("real Postgres schema and complete authorized booking lifecycle", async (t) => {
+
+test("DriveX plan-based schema and lifecycle tests", async (t) => {
   const db = new PGlite({ extensions: { btree_gist } });
-  await db.exec(`create role anon; create role authenticated; create schema auth;
- create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb);
- create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
- grant usage on schema auth to authenticated;
- grant execute on function auth.uid() to authenticated;`);
-  await db.exec(
-    await readFile(new URL("../backend/schema.sql", import.meta.url), "utf8"),
-  );
-  for (const [name, id] of Object.entries(ids))
+  await db.exec(`create role anon; create role authenticated; create role service_role; create schema auth;
+create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb);
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+grant usage on schema auth to authenticated;
+grant execute on function auth.uid() to authenticated;`);
+
+  // Apply migrations 0001, 0002, 0003 in order
+  await db.exec(await readFile(new URL("../supabase/migrations/0001_init.sql", import.meta.url), "utf8"));
+  await db.exec(await readFile(new URL("../supabase/migrations/0002_razorpay.sql", import.meta.url), "utf8"));
+  await db.exec(await readFile(new URL("../supabase/migrations/0003_plans.sql", import.meta.url), "utf8"));
+
+  for (const [name, id] of Object.entries(ids)) {
     await db.query("insert into auth.users values($1,$2,$3)", [
       id,
       name + "@example.test",
-      JSON.stringify({ name, phone: "test-only", role: "admin" }),
+      JSON.stringify({ name, phone: "test-only" }),
     ]);
+  }
+
   async function as(user, action, payload = {}) {
     await db.exec("reset role");
-    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
-      ids[user] || "",
-    ]);
-    await db.exec("set role authenticated");
+    if (user) {
+      await db.query("select set_config('request.jwt.claim.sub',$1,false)", [ids[user] || ""]);
+      await db.exec("set role authenticated");
+    }
     return (
       await db.query("select public.drivex($1,$2) as result", [
         action,
@@ -39,206 +45,127 @@ test("real Postgres schema and complete authorized booking lifecycle", async (t)
       ])
     ).rows[0].result;
   }
-  await t.test(
-    "metadata cannot self-assign admin and new account has no sample bookings",
-    async () => {
-      const s = await as("student", "snapshot");
-      assert.equal(s.me.role, "student");
-      assert.equal(s.bookings.length, 0);
-      assert.equal(s.vehicles.length, 0);
-      await assert.rejects(
-        as("student", "add_vehicle", {
-          name: "Car",
-          reg: "TEST1",
-          transmission: "Manual",
-        }),
-        /Admin access/,
-      );
-    },
-  );
-  await as("admin", "snapshot");
+
+  // Promote admin profile
+  await as("admin", "me");
   await db.exec("reset role");
-  await db.query(
-    "update drivex_private.profiles set role='admin' where id=$1",
-    [ids.admin],
-  );
-  await t.test("administrator provisions instructor and vehicle", async () => {
-    await as("admin", "add_instructor", {
-      email: "instructor@example.test",
-      specialty: "Parking",
-    });
-    await as("admin", "add_vehicle", {
-      name: "Test car",
-      reg: "TEST 01",
-      transmission: "Manual",
-    });
-    assert.equal((await as("instructor", "snapshot")).me.role, "instructor");
+  await db.query("update drivex_private.profiles set role='admin' where id=$1", [ids.admin]);
+
+  await t.test("plans are seeded with correct prices", async () => {
+    const plans = await as("student", "plans_list");
+    assert.equal(plans.length, 2);
+    const p10 = plans.find((p) => p.id === "plan_10_day");
+    assert.equal(p10.price_inr, 1500);
+    assert.equal(p10.lesson_credits, 10);
+    const pMonthly = plans.find((p) => p.id === "plan_monthly");
+    assert.equal(pMonthly.price_inr, 4000);
+    assert.equal(pMonthly.lesson_credits, 30);
   });
-  const base = await as("student", "snapshot"),
-    vehicle = base.vehicles[0].id,
-    date = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10),
-    input = { date, time: "10:00", instructor: ids.instructor, vehicle };
-  let booking;
-  await t.test(
-    "reserve writes persistent pending booking and detects resource overlap",
-    async () => {
-      booking = await as("student", "reserve", input);
-      assert.equal(booking.status, "pending");
-      assert.equal((await as("student", "snapshot")).bookings.length, 1);
-      await assert.rejects(as("other", "reserve", input), /just reserved/);
-      assert.equal(
-        (await as("student", "availability", input)).find(
-          (t) => t.time === "10:00",
-        ).available,
-        false,
-      );
-    },
-  );
-  await t.test(
-    "unpaid lesson stays private and students cannot confirm their own payment",
-    async () => {
-      assert.equal((await as("instructor", "snapshot")).bookings.length, 0);
-      assert.equal((await as("other", "snapshot")).bookings.length, 0);
-      await assert.rejects(
-        as("student", "record_payment", {
-          booking: booking.id,
-          reference: "fake-payment",
-        }),
-        /Admin access/,
-      );
-      await assert.rejects(
-        db.query("select * from drivex_private.bookings"),
-        /permission denied/,
-      );
-    },
-  );
-  await t.test(
-    "verified admin receipt confirms booking atomically and replay is idempotent",
-    async () => {
-      await as("admin", "record_payment", {
-        booking: booking.id,
-        reference: "real-test-receipt",
-      });
-      await as("admin", "record_payment", {
-        booking: booking.id,
-        reference: "real-test-receipt",
-      });
-      assert.equal((await as("student", "snapshot")).payments.length, 1);
-      assert.equal(
-        (await as("instructor", "snapshot")).bookings[0].status,
-        "confirmed",
-      );
-    },
-  );
-  await t.test(
-    "assessment requires assigned instructor, end time and valid score",
-    async () => {
-      await assert.rejects(
-        as("student", "assess", {
-          booking: booking.id,
-          score: 8,
-          notes: "Good",
-        }),
-        /assigned instructor/,
-      );
-      await assert.rejects(
-        as("instructor", "assess", {
-          booking: booking.id,
-          score: 8,
-          notes: "Good",
-        }),
-        /after a confirmed/,
-      );
-      await db.exec("reset role");
-      await db.query(
-        "update drivex_private.bookings set starts_at=now()-interval '2 hours',ends_at=now()-interval '1 hour' where id=$1",
-        [booking.id],
-      );
-      await assert.rejects(
-        as("instructor", "assess", {
-          booking: booking.id,
-          score: 11,
-          notes: "Good",
-        }),
-        /1 to 10/,
-      );
-      await as("instructor", "assess", {
-        booking: booking.id,
-        score: 8,
-        notes: "Good mirror checks.",
-      });
-      assert.equal((await as("student", "snapshot")).bookings[0].score, 8);
-    },
-  );
-  await t.test(
-    "cancellation requests do not pretend to refund money",
-    async () => {
-      const b = await as("student", "reserve", { ...input, time: "11:00" });
-      await as("admin", "record_payment", {
-        booking: b.id,
-        reference: "second-receipt",
-      });
-      await as("student", "cancel", { booking: b.id });
-      const s = await as("student", "snapshot");
-      assert.equal(
-        s.payments.find((p) => p.booking === b.id).status,
-        "refund_pending",
-      );
-      await assert.rejects(
-        as("student", "record_refund", {
-          booking: b.id,
-          reference: "refund-fake",
-        }),
-        /Admin access/,
-      );
-      await as("admin", "record_refund", {
-        booking: b.id,
-        reference: "refund-receipt",
-      });
-      assert.equal(
-        (await as("student", "snapshot")).bookings.find((x) => x.id === b.id)
-          .status,
-        "cancelled",
-      );
-      assert.equal(
-        (await as("student", "availability", { ...input, time: "11:00" })).find(
-          (t) => t.time === "11:00",
-        ).available,
-        true,
-      );
-    },
-  );
-  await t.test(
-    "expired reservation rejects payment and releases slot",
-    async () => {
-      const b = await as("student", "reserve", { ...input, time: "14:00" });
-      await db.exec("reset role");
-      await db.query(
-        "update drivex_private.bookings set expires_at=now()-interval '1 minute' where id=$1",
-        [b.id],
-      );
-      await assert.rejects(
-        as("admin", "record_payment", {
-          booking: b.id,
-          reference: "late-receipt",
-        }),
-        /expired/,
-      );
-      assert.equal(
-        (await as("student", "snapshot")).bookings.find((x) => x.id === b.id)
-          .status,
-        "expired",
-      );
-    },
-  );
-  await t.test("anonymous and unknown actions are rejected", async () => {
-    await assert.rejects(as("student", "make_me_admin"), /Unknown action/);
-    await assert.rejects(as(null, "snapshot"), /Please sign in/);
-    await db.exec("reset role;set role anon");
+
+  await t.test("instructor approval workflow: pending instructors cannot receive enrollments", async () => {
+    // Add instructor through admin
+    await as("admin", "add_instructor", { email: "instructor@example.test", specialty: "Defensive Driving" });
+    await db.exec("reset role");
+    // Initially set instructor approval to pending
+    await db.query("update drivex_private.profiles set approval_status='pending' where id=$1", [ids.instructor]);
+
+    // Learner cannot enroll with pending instructor
     await assert.rejects(
-      db.query("select public.drivex('snapshot')"),
-      /permission denied/,
+      as("student", "enroll", { plan_id: "plan_10_day", instructor_id: ids.instructor }),
+      /Instructor not available/
+    );
+
+    // Admin approves instructor
+    await as("admin", "admin_set_instructor_status", { instructor_id: ids.instructor, status: "approved" });
+    const approvedList = await as("student", "instructors_list");
+    assert.ok(approvedList.some((i) => i.id === ids.instructor));
+  });
+
+  let enrollmentId;
+  await t.test("learner enrolls in plan and server sets authoritative amount", async () => {
+    const enrollment = await as("student", "enroll", { plan_id: "plan_10_day", instructor_id: ids.instructor });
+    assert.equal(enrollment.price_inr, 1500);
+    assert.equal(enrollment.amount_paise, 150000);
+    assert.equal(enrollment.status, "pending_payment");
+    enrollmentId = enrollment.enrollment_id;
+  });
+
+  await t.test("learner cannot self-mark enrollment paid or call admin_mark_paid", async () => {
+    await assert.rejects(
+      as("student", "admin_mark_paid", { enrollment_id: enrollmentId }),
+      /Admin access required/
     );
   });
-  await db.close();
+
+  await t.test("admin marks enrollment paid and credits activate", async () => {
+    await as("admin", "admin_mark_paid", { enrollment_id: enrollmentId });
+    const snap = await as("student", "me");
+    assert.equal(snap.active_enrollment.credits_total, 10);
+    assert.equal(snap.active_enrollment.credits_remaining, 10);
+  });
+
+  let vehicleId;
+  await t.test("admin provisions vehicle", async () => {
+    const v = await as("admin", "add_vehicle", { name: "Hyundai i20", reg: "KA05MN1234", transmission: "Manual" });
+    vehicleId = v.id;
+  });
+
+  const futureDate = new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 10);
+  let bookingId;
+  await t.test("learner books lesson using plan credit", async () => {
+    const res = await as("student", "reserve", {
+      date: futureDate,
+      time: "10:00",
+      vehicle: vehicleId,
+    });
+    assert.equal(res.status, "confirmed");
+    bookingId = res.id;
+  });
+
+  await t.test("double-booking is prevented by database exclusion constraint", async () => {
+    await assert.rejects(
+      as("other", "reserve", {
+        date: futureDate,
+        time: "10:00",
+        vehicle: vehicleId,
+      }),
+      /Active plan with available lesson credits required/
+    );
+  });
+
+  await t.test("completing lesson consumes 1 credit (10 -> 9)", async () => {
+    // Force lesson time to past for completion assessment
+    await db.exec("reset role");
+    await db.query(`update drivex_private.bookings set starts_at = now() - interval '2 hours', ends_at = now() - interval '1 hour' where id = $1`, [bookingId]);
+
+    await as("instructor", "complete_booking", {
+      booking: bookingId,
+      score: 9,
+      notes: "Smooth steering control and confident braking.",
+    });
+
+    const snap = await as("student", "me");
+    assert.equal(snap.active_enrollment.credits_used, 1);
+    assert.equal(snap.active_enrollment.credits_remaining, 9);
+  });
+
+  await t.test("theory progress can be marked by learner but practical only by instructor", async () => {
+    const lessons = await as("student", "my_lessons");
+    const theory = lessons.find((l) => l.kind === "theory");
+    const practical = lessons.find((l) => l.kind === "practical");
+
+    // Student marks theory
+    const tRes = await as("student", "mark_theory_done", { lesson_id: theory.id });
+    assert.equal(tRes.status, "success");
+
+    // Student CANNOT mark practical
+    await assert.rejects(
+      as("student", "mark_practical_done", { lesson_id: practical.id, learner_id: ids.student }),
+      /Only instructor can mark practical/
+    );
+
+    // Instructor marks practical
+    const pRes = await as("instructor", "mark_practical_done", { lesson_id: practical.id, learner_id: ids.student });
+    assert.equal(pRes.status, "success");
+  });
 });

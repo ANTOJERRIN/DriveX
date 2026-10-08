@@ -1098,3 +1098,232 @@ dialog::backdrop {
     display: none;
   }
 }
+
+/* Door Selector */
+.door-tabs {
+  display: flex;
+  gap: 8px;
+  background: #e6ebe8;
+  padding: 4px;
+  border-radius: 10px;
+  margin-bottom: 24px;
+}
+.door-btn {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: none;
+  color: #55625c;
+  font-weight: 600;
+  font-size: 14px;
+  text-align: center;
+  transition: all 0.2s;
+}
+.door-btn.active {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+/* Plan Preview Pills */
+.plan-preview-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.pill {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #d4f575;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Plan Cards Grid */
+.plan-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+.plan-card {
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.03);
+  transition: transform 0.2s;
+}
+.plan-card:hover {
+  transform: translateY(-2px);
+}
+.plan-card.highlight {
+  border-color: #142c25;
+}
+.badge-ribbon {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: #d4f575;
+  color: #142c25;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+.plan-head h3 {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.price {
+  margin: 12px 0 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.price b {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.price span {
+  color: var(--muted);
+  font-size: 14px;
+}
+.credits-tag {
+  background: #f0f7f3;
+  color: #1a4f3b;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin: 12px 0 20px;
+}
+.plan-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: #374741;
+  font-size: 14px;
+}
+.plan-features li {
+  line-height: 1.4;
+}
+
+/* Active Plan & Alerts */
+.banner-alert {
+  background: #fdfae6;
+  border: 1px solid #ebd97e;
+  padding: 20px 24px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.banner-alert h3 {
+  color: #634b07;
+  margin-bottom: 4px;
+}
+.banner-alert p {
+  color: #79601d;
+  font-size: 14px;
+}
+.plan-active-badge {
+  background: #142c25;
+  color: #fff;
+  padding: 24px 28px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.plan-active-badge h2 {
+  font-size: 24px;
+  margin: 6px 0 4px;
+}
+.plan-active-badge p {
+  color: #a4c2b7;
+  font-size: 14px;
+}
+.credits-large {
+  text-align: right;
+}
+.credits-large b {
+  font-size: 40px;
+  color: #d4f575;
+  display: block;
+  line-height: 1;
+}
+.credits-large small {
+  color: #a4c2b7;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Syllabus */
+.syllabus-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  gap: 12px;
+}
+.syllabus-item b {
+  font-size: 15px;
+  color: var(--ink);
+  display: block;
+  margin-bottom: 4px;
+}
+.button-link {
+  font-size: 13px;
+  color: #1b533e;
+  font-weight: 600;
+  text-decoration: underline;
+  margin-right: 12px;
+}
+.button-link:hover {
+  color: #0b2e21;
+}
+
+/* Grid buttons */
+.grid-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.payment-method-box {
+  background: #f5f7f8;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  margin: 12px 0 16px;
+}
+.payment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-actions-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+

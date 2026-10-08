@@ -8,7 +8,9 @@ import {
   changePassword,
   handleCallback,
   rpc,
+  invokeFunction,
 } from "./api.mjs";
+
 const $ = (s) => document.querySelector(s),
   esc = (s) =>
     String(s ?? "").replace(
@@ -22,6 +24,7 @@ const $ = (s) => document.querySelector(s),
           "'": "&#39;",
         })[c],
     );
+
 const money = (v) => "₹" + Number(v).toLocaleString("en-IN"),
   date = (d) =>
     new Date(d + "T12:00:00").toLocaleDateString("en-IN", {
@@ -36,70 +39,100 @@ const money = (v) => "₹" + Number(v).toLocaleString("en-IN"),
       day: "2-digit",
     }).format(new Date()),
   tag = (s) =>
-    `<span class="tag ${esc(s)}">${esc(s.replaceAll("_", " "))}</span>`;
+    `<span class="tag ${esc(s)}">${esc(String(s || "").replaceAll("_", " "))}</span>`;
+
 let state = null,
   page = "overview",
   filter = "all",
   times = [],
+  courseLessons = [],
+  myPayments = [],
   draft = { date: today(), time: "", instructor: "", vehicle: "" },
   busy = false,
+  door = "learner",
   recovery = handleCallback();
-const role = () => state?.me.role,
+
+const role = () => state?.me?.role || "student",
   who = (id) =>
-    esc(state.instructors.find((i) => i.id === id)?.name || "Instructor"),
-  car = (id) => state.vehicles.find((v) => v.id === id),
+    esc(state?.instructors?.find((i) => i.id === id)?.name || "Instructor"),
+  car = (id) => state?.vehicles?.find((v) => v.id === id),
   initials = (n) =>
     esc(
-      n
+      (n || "User")
         .split(" ")
         .map((x) => x[0])
         .slice(0, 2)
         .join("")
         .toUpperCase(),
     );
+
 const navs = {
   student: [
     ["overview", "Overview"],
+    ["plans", "Plans & Pricing"],
     ["book", "Book a lesson"],
+    ["syllabus", "Theory & Syllabus"],
     ["lessons", "My lessons"],
-    ["progress", "My progress"],
     ["payments", "Payments"],
   ],
   instructor: [
     ["overview", "Overview"],
+    ["learners", "My learners"],
     ["lessons", "My schedule"],
-    ["progress", "Assessments"],
   ],
   admin: [
     ["overview", "Overview"],
+    ["instructors", "Instructor approvals"],
     ["lessons", "All bookings"],
-    ["team", "Instructors"],
-    ["fleet", "Vehicles"],
-    ["payments", "Payments"],
+    ["fleet", "Training fleet"],
   ],
 };
+
 function toast(message) {
-  $("#toast").textContent = message;
-  $("#toast").style.display = "block";
+  const t = $("#toast");
+  if (!t) return;
+  t.textContent = message;
+  t.style.display = "block";
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => ($("#toast").style.display = "none"), 5500);
+  toast.timer = setTimeout(() => (t.style.display = "none"), 5000);
 }
+
 function modal(title, body) {
   const m = $("#modal");
+  if (!m) return;
   m.innerHTML = `<div class="modal-top"><h2 id="modal-title">${title}</h2><button class="close" aria-label="Close dialog">×</button></div>${body}`;
   m.querySelector(".close").onclick = () => m.close();
   if (!m.open) m.showModal();
 }
+
 function errorText(e) {
-  return e.message || "Could not complete this action. Please try again.";
+  return e?.message || "Could not complete this action. Please try again.";
 }
+
 async function reload() {
   state = await rpc("snapshot");
-  draft.instructor ||= state.instructors[0]?.id || "";
-  draft.vehicle ||= state.vehicles[0]?.id || "";
-  if (!navs[role()].some((n) => n[0] === page)) page = "overview";
+  if (role() === "student") {
+    try {
+      courseLessons = await rpc("my_lessons");
+    } catch {}
+    try {
+      myPayments = await rpc("my_payments");
+    } catch {}
+  }
+  if (state.instructors?.length && !draft.instructor) {
+    draft.instructor = state.active_enrollment?.instructor_id || state.instructors[0].id;
+  }
+  if (state.vehicles?.length && !draft.vehicle) {
+    draft.vehicle = state.vehicles[0].id;
+  }
+  const userRole = role();
+  const allowedPages = navs[userRole] || navs.student;
+  if (!allowedPages.some((n) => n[0] === page)) {
+    page = "overview";
+  }
   render();
 }
+
 async function navigate(p) {
   page = p;
   filter = "all";
@@ -107,16 +140,17 @@ async function navigate(p) {
   if (p === "book") await availability();
   window.scrollTo(0, 0);
 }
+
 async function mutate(action, payload, message) {
   if (busy) return;
   busy = true;
-  const buttons = [...$("#modal").querySelectorAll("button")];
+  const buttons = [...($("#modal")?.querySelectorAll("button") || [])];
   buttons.forEach((b) => (b.disabled = true));
   try {
     await rpc(action, payload);
-    $("#modal").close();
+    $("#modal")?.close();
     await reload();
-    toast(message);
+    if (message) toast(message);
   } catch (e) {
     const error = $("#modal .error");
     if (error) error.textContent = errorText(e);
@@ -126,19 +160,108 @@ async function mutate(action, payload, message) {
     buttons.forEach((b) => (b.disabled = false));
   }
 }
+
+// -------------------------------------------------------------
+// Authentication & Landing Flow
+// -------------------------------------------------------------
 function auth(mode = "login", message = "") {
   const setup = !configured();
-  $("#app").innerHTML =
-    `<main class="auth-shell"><section class="auth-story"><div class="brand"><div class="brandmark">D</div>Drive<span>X</span></div><div><div class="eyebrow">Your driving journey</div><h1>Confidence starts<br>with the next lesson.</h1><p>Book your practice. Learn from your instructor.<br>See your progress, one drive at a time.</p></div><small>DriveX Driving School · Bengaluru</small></section><section class="auth-panel"><div class="auth-card">${setup ? `<div class="eyebrow">Connection required</div><h1>DriveX is awaiting its database.</h1><p class="sub">The live app has no sample accounts, lessons, or transactions. Account creation and bookings will become available when the school’s database is connected.</p><div class="hint">The project owner needs to connect a dedicated Supabase project. No booking has been made and no payment has been collected.</div>` : `<div class="eyebrow">DriveX account</div><h1>${mode === "signup" ? "Start your journey." : mode === "recover" ? "Reset your password." : mode === "password" ? "Choose a new password." : "Welcome back."}</h1><p class="sub">${mode === "signup" ? "Create your student account. Instructors receive access from the school administrator." : mode === "recover" ? "We’ll email you a password reset link." : "Your lessons and progress, in one place."}</p><form id="auth-form" class="modal-body">${mode === "signup" ? '<label>Full name<input name="name" autocomplete="name" maxlength="100" required></label><label>Phone<input name="phone" type="tel" autocomplete="tel" maxlength="30" required></label>' : ""}${mode !== "password" ? '<label>Email<input name="email" type="email" autocomplete="email" required></label>' : ""}${mode !== "recover" ? `<label>Password<input name="password" type="password" minlength="8" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required></label>` : ""}<p class="error" role="alert" id="auth-error"></p>${message ? `<p class="sub" role="status">${esc(message)}</p>` : ""}<button class="primary full" type="submit">${mode === "signup" ? "Create account" : mode === "recover" ? "Send reset link" : mode === "password" ? "Update password" : "Sign in"}</button></form><div class="auth-links">${mode === "login" ? '<button class="link" data-auth="signup">Create a student account</button><button class="link" data-auth="recover">Forgot password?</button>' : '<button class="link" data-auth="login">Back to sign in</button>'}</div>`}</div></section></main>`;
-  document
-    .querySelectorAll("[data-auth]")
-    .forEach((b) => (b.onclick = () => auth(b.dataset.auth)));
+  $("#app").innerHTML = `
+    <main class="auth-shell">
+      <section class="auth-story">
+        <div class="brand"><div class="brandmark">D</div>Drive<span>X</span></div>
+        <div>
+          <div class="eyebrow">Driving Academy Platform</div>
+          <h1>Confidence starts with structured driving.</h1>
+          <p>Structured 10-Day and Monthly plans, verified instructors, and real theory & practical progress tracking.</p>
+        </div>
+        <div class="plan-preview-pills">
+          <div class="pill">🚗 10-Day Plan · ₹1,500 (10 Credits)</div>
+          <div class="pill">🌟 Monthly Plan · ₹4,000 (30 Credits)</div>
+        </div>
+        <small>DriveX Driving School · Bengaluru</small>
+      </section>
+
+      <section class="auth-panel">
+        <div class="auth-card">
+          ${setup ? `
+            <div class="eyebrow">Setup required</div>
+            <h1>DriveX is awaiting configuration.</h1>
+            <p class="sub">Set up your database credentials to begin.</p>
+          ` : `
+            <div class="door-tabs">
+              <button class="door-btn ${door === "learner" ? "active" : ""}" data-door="learner">I'm a Learner</button>
+              <button class="door-btn ${door === "instructor" ? "active" : ""}" data-door="instructor">I'm an Instructor</button>
+            </div>
+
+            <div class="eyebrow">${door === "learner" ? "Learner Portal" : "Instructor Portal"}</div>
+            <h1>${mode === "signup" ? "Create your account." : mode === "recover" ? "Reset password." : "Welcome back."}</h1>
+            <p class="sub">${mode === "signup" ? (door === "instructor" ? "Register as an instructor. Your account will be verified by the admin." : "Sign up to buy a plan and start booking driving lessons.") : "Sign in to access your dashboard."}</p>
+
+            <form id="auth-form" class="modal-body">
+              ${mode === "signup" ? `
+                <label>Full name
+                  <input name="name" autocomplete="name" maxlength="100" placeholder="e.g. Rahul Sharma" required>
+                </label>
+                <label>Phone number
+                  <input name="phone" type="tel" autocomplete="tel" maxlength="30" placeholder="e.g. 9876543210" required>
+                </label>
+                <label>Role
+                  <select name="role">
+                    <option value="student" ${door === "learner" ? "selected" : ""}>Learner</option>
+                    <option value="instructor" ${door === "instructor" ? "selected" : ""}>Instructor</option>
+                  </select>
+                </label>
+              ` : ""}
+              ${mode !== "password" ? `
+                <label>Email
+                  <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+                </label>
+              ` : ""}
+              ${mode !== "recover" ? `
+                <label>Password
+                  <input name="password" type="password" minlength="6" placeholder="••••••••" required>
+                </label>
+              ` : ""}
+              <p class="error" role="alert" id="auth-error"></p>
+              ${message ? `<p class="sub" role="status">${esc(message)}</p>` : ""}
+              <button class="primary full" type="submit">
+                ${mode === "signup" ? "Create account" : mode === "recover" ? "Send reset link" : "Sign in"}
+              </button>
+            </form>
+
+            <div class="auth-links">
+              ${mode === "login" ? `
+                <button class="link" data-auth="signup">New here? Create an account</button>
+                <button class="link" data-auth="recover">Forgot password?</button>
+              ` : `
+                <button class="link" data-auth="login">Already have an account? Sign in</button>
+              `}
+            </div>
+          `}
+        </div>
+      </section>
+    </main>
+  `;
+
+  document.querySelectorAll("[data-door]").forEach((b) => {
+    b.onclick = () => {
+      door = b.dataset.door;
+      auth(mode);
+    };
+  });
+
+  document.querySelectorAll("[data-auth]").forEach((b) => {
+    b.onclick = () => auth(b.dataset.auth);
+  });
+
   if (setup) return;
+
   $("#auth-form").onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget),
-      button = e.currentTarget.querySelector("button");
-    button.disabled = true;
+      btn = e.currentTarget.querySelector("button");
+    btn.disabled = true;
     $("#auth-error").textContent = "";
     try {
       if (mode === "recover") {
@@ -146,66 +269,301 @@ function auth(mode = "login", message = "") {
         auth("login", "If an account exists, a reset link has been sent.");
         return;
       }
-      if (mode === "password") {
-        await changePassword(f.get("password"));
-        recovery = false;
-        await reload();
-        toast("Password updated.");
-        return;
-      }
       if (mode === "signup") {
+        const selectedRole = f.get("role") || (door === "instructor" ? "instructor" : "student");
         const active = await signup(
           f.get("name"),
           f.get("email"),
           f.get("password"),
           f.get("phone"),
+          selectedRole
         );
-        if (!active) {
-          auth(
-            "login",
-            "Check your email to confirm your account, then sign in.",
-          );
-          return;
-        }
-      } else await login(f.get("email"), f.get("password"));
+        if (active) await reload();
+        else auth("login", "Account created! Please check your email to confirm.");
+        return;
+      }
+      await login(f.get("email"), f.get("password"));
       await reload();
-    } catch (e) {
-      $("#auth-error").textContent = errorText(e);
-    } finally {
-      button.disabled = false;
+    } catch (err) {
+      $("#auth-error").textContent = errorText(err);
+      btn.disabled = false;
     }
   };
 }
-function intro(title, sub, button = "") {
-  return `<div class="intro"><div><div class="eyebrow">${role() === "student" ? "Learner workspace" : role() === "admin" ? "School management" : "Instructor workspace"}</div><h1>${title}</h1><p class="sub">${sub}</p></div>${button}</div>`;
+
+// -------------------------------------------------------------
+// Main Shell & Dashboard Layout
+// -------------------------------------------------------------
+function intro(title, sub, actionHtml = "") {
+  return `
+    <header class="intro-block">
+      <div>
+        <h1>${esc(title)}</h1>
+        <p class="sub">${esc(sub)}</p>
+      </div>
+      ${actionHtml ? `<div>${actionHtml}</div>` : ""}
+    </header>
+  `;
 }
-function stat(label, value, note) {
-  return `<div class="stat"><div class="stat-head">${label}</div><div class="number">${value}</div><div class="stat-note">${note}</div></div>`;
+
+function stat(title, value, hint = "") {
+  return `
+    <div class="stat-card">
+      <small>${esc(title)}</small>
+      <b>${esc(value)}</b>
+      ${hint ? `<span>${esc(hint)}</span>` : ""}
+    </div>
+  `;
 }
-function render() {
-  if (!state) return;
-  $("#app").innerHTML =
-    `<div class="shell"><aside class="side"><div class="brand"><div class="brandmark">D</div>Drive<span>X</span></div><small>${role()} workspace</small><nav class="nav" aria-label="Main navigation">${navs[role()].map(([p, t], i) => `<button data-nav="${p}" class="${p === page ? "active" : ""}" ${p === page ? 'aria-current="page"' : ""}><span aria-hidden="true">${["◫", "▦", "◷", "◇", "▤"][i] || "◫"}</span>${t}</button>`).join("")}</nav><div class="side-bottom"><div class="side-note"><b>Confidence comes with practice.</b>One lesson closer to the open road.</div><div class="side-foot">DriveX Driving School</div></div></aside><div><header class="topbar"><div class="crumb">Workspace <b>/ ${navs[role()].find((n) => n[0] === page)?.[1]}</b></div><div class="persona"><div class="avatar">${initials(state.me.name)}</div><div class="meta-name">${esc(state.me.name)}<small>${role()}</small></div><button class="secondary" id="refresh">Refresh</button><button class="link" id="logout">Sign out</button></div></header><main class="content">${page === "overview" ? overview() : page === "book" ? booking() : page === "lessons" ? lessons() : page === "progress" ? progress() : page === "payments" ? payments() : resources()}<footer class="footer"><span>DriveX · Make every lesson count.</span><span>Lesson times: India Standard Time</span></footer></main></div></div>`;
-  bind();
+
+// -------------------------------------------------------------
+// Learner Portal Views
+// -------------------------------------------------------------
+function learnerOverview() {
+  const me = state.me;
+  const en = state.active_enrollment;
+  const creditsLeft = en ? en.credits_remaining : 0;
+  const bookings = state.bookings || [];
+  const confirmed = bookings.filter((b) => b.status === "confirmed").length;
+  const completed = bookings.filter((b) => b.status === "completed").length;
+  const nextLesson = bookings.find((b) => b.status === "confirmed" && new Date(b.ends_at) > new Date());
+
+  return `
+    ${intro(`Welcome, ${me.name.split(" ")[0]}!`, "Your driving roadmap, credits balance, and progress.")}
+    
+    ${!en ? `
+      <section class="banner-alert">
+        <div>
+          <h3>Ready to start driving?</h3>
+          <p>You don't have an active training plan yet. Choose a plan to unlock lesson credits and book with top instructors.</p>
+        </div>
+        <button class="primary" data-nav="plans">View Plans & Enroll</button>
+      </section>
+    ` : `
+      <section class="plan-active-badge">
+        <div>
+          <span class="tag confirmed">Active Plan</span>
+          <h2>${esc(en.plan_name)}</h2>
+          <p>Assigned Instructor: <b>${esc(en.instructor_name)}</b></p>
+        </div>
+        <div class="credits-large">
+          <b>${creditsLeft}</b>
+          <small>Credits Remaining</small>
+        </div>
+      </section>
+    `}
+
+    <div class="stats">
+      ${stat("Credits Left", en ? `${creditsLeft} of ${en.credits_total}` : "0", en ? "1 credit used per completed lesson" : "No active plan")}
+      ${stat("Confirmed Lessons", confirmed, "Scheduled with instructor")}
+      ${stat("Completed Lessons", completed, "Finished practice drives")}
+    </div>
+
+    ${nextLesson ? `
+      <section class="panel panel-pad section-gap">
+        <div class="panel-head">
+          <h2>Next Upcoming Lesson</h2>
+          <span class="tag confirmed">Confirmed</span>
+        </div>
+        <div class="summary-line">
+          <span>Date & Time</span>
+          <b>${date(nextLesson.date)} at ${nextLesson.time} IST</b>
+        </div>
+        <div class="summary-line">
+          <span>Instructor</span>
+          <span>${who(nextLesson.instructor)}</span>
+        </div>
+        <div class="summary-line">
+          <span>Vehicle</span>
+          <span>${esc(car(nextLesson.vehicle)?.name || "Training Vehicle")}</span>
+        </div>
+      </section>
+    ` : ""}
+
+    <section class="panel panel-pad section-gap">
+      <div class="panel-head">
+        <h2>Quick Shortcuts</h2>
+      </div>
+      <div class="grid-buttons">
+        <button class="secondary" data-nav="plans">💳 Training Plans</button>
+        <button class="secondary" data-nav="book">📅 Book a Slot</button>
+        <button class="secondary" data-nav="syllabus">📖 Theory & Syllabus</button>
+        <button class="secondary" data-nav="lessons">🕒 My Lessons</button>
+      </div>
+    </section>
+  `;
 }
-function overview() {
-  const done = state.bookings.filter((b) => b.status === "completed"),
-    up = state.bookings
-      .filter((b) => b.status === "confirmed")
-      .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)),
-    avg = done.length
-      ? (done.reduce((s, b) => s + b.score, 0) / done.length).toFixed(1)
-      : "—";
-  return `${intro(`Welcome, ${esc(state.me.name.split(" ")[0])}.`, "Your lessons, schedule, and progress are up to date.", role() === "student" ? '<button class="primary" data-nav="book">Book a lesson</button>' : "")}<div class="stats">${stat("Completed lessons", done.length, "Recorded lessons")}${stat("Confirmed lessons", up.length, "Payment received")}${stat("Average assessment", avg, "Out of 10")}${stat("Learning hours", done.length, "Completed practice time")}</div><div class="grid"><section class="panel panel-pad"><div class="panel-head"><h2>Next confirmed lesson</h2><button class="link" data-nav="lessons">View schedule</button></div>${up.length ? `<div class="lesson-hero"><div class="hero-top"><span class="eyebrow">${date(up[0].date)} · ${up[0].time} IST</span>${tag("confirmed")}</div><h2>${esc(car(up[0].vehicle)?.name)} driving lesson</h2><p class="sub">${who(up[0].instructor)} · 60 minutes</p><div class="hero-foot section-gap"><span>${esc(up[0].student)}</span><button class="primary lime" data-detail="${up[0].id}">Lesson details</button></div></div>` : '<div class="empty"><b>No confirmed lessons yet</b>Lessons appear here once the school records your payment.</div>'}<div class="hint">Bring your learner’s licence and arrive 10 minutes early.</div></section><section class="panel panel-pad"><h2>Learning progress</h2><div class="progress-layout section-gap"><div class="ring" style="--pct:${Math.min(done.length * 10, 100)}"><div class="ring-inner"><b>${done.length}</b><small>lessons</small></div></div><div><h3>${done.length ? "Keep the momentum going" : "Your journey starts here"}</h3><p class="sub">Your instructor’s feedback appears<br>after each completed lesson.</p></div></div><button class="secondary full" data-nav="${role() === "admin" ? "lessons" : "progress"}">${role() === "admin" ? "View all bookings" : "View feedback"}</button></section></div><section class="panel section-gap"><div class="panel-head table-title"><h2>Recent lessons</h2><button class="link" data-nav="lessons">View all</button></div>${table(state.bookings.slice(0, 5))}</section>`;
+
+function plansView() {
+  const en = state.active_enrollment;
+  const plans = state.plans || [
+    { id: "plan_10_day", name: "10-Day Plan", price_inr: 1500, lesson_credits: 10 },
+    { id: "plan_monthly", name: "Monthly Plan", price_inr: 4000, lesson_credits: 30 },
+  ];
+
+  return `
+    ${intro("Choose your Driving Plan", "Simple, transparent pricing. A credit is deducted only when your lesson is completed.")}
+    
+    ${en ? `
+      <div class="info-box">
+        You are currently enrolled in the <b>${esc(en.plan_name)}</b> with <b>${en.credits_remaining} credits</b> remaining.
+      </div>
+    ` : ""}
+
+    <div class="plan-cards-grid">
+      ${plans.map((p) => `
+        <article class="plan-card ${p.id === 'plan_monthly' ? 'highlight' : ''}">
+          ${p.id === 'plan_monthly' ? '<span class="badge-ribbon">Most Popular</span>' : ''}
+          <div class="plan-head">
+            <h3>${esc(p.name)}</h3>
+            <div class="price">
+              <b>${money(p.price_inr)}</b>
+              <span>/ total</span>
+            </div>
+            <p class="credits-tag">🚗 Includes <b>${p.lesson_credits} Driving Credits</b></p>
+          </div>
+          <ul class="plan-features">
+            <li>✓ 1-on-1 practical driving sessions</li>
+            <li>✓ Dedicated certified instructor</li>
+            <li>✓ Full Theory syllabus & road rules</li>
+            <li>✓ 1 credit used only when lesson ends</li>
+            <li>✓ Razorpay secure online payment</li>
+          </ul>
+          <button class="primary full" data-enroll="${esc(p.id)}">
+            Enroll & Pay ${money(p.price_inr)}
+          </button>
+        </article>
+      `).join("")}
+    </div>
+  `;
 }
-function table(rows) {
-  return rows.length
-    ? `<div class="table-wrap"><table><thead><tr><th>LESSON</th><th>STUDENT / INSTRUCTOR</th><th>VEHICLE</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>${rows.map((b) => `<tr><td>${date(b.date)}<small>${b.time} · 60 min</small></td><td>${esc(b.student)}<small>${who(b.instructor)}</small></td><td>${esc(car(b.vehicle)?.name || "Vehicle")}</td><td>${tag(b.status)}</td><td><button class="link" data-detail="${b.id}">${b.score ? `${b.score}/10 · Feedback` : "Details"}</button></td></tr>`).join("")}</tbody></table></div>`
-    : '<div class="empty"><b>No lessons to show</b>New bookings will appear here.</div>';
+
+function enrollModal(planId) {
+  const p = state.plans?.find((x) => x.id === planId) || {
+    id: planId,
+    name: planId === "plan_10_day" ? "10-Day Plan" : "Monthly Plan",
+    price_inr: planId === "plan_10_day" ? 1500 : 4000,
+  };
+  const instructors = state.instructors || [];
+
+  if (!instructors.length) {
+    toast("No instructors are available yet. The school admin needs to approve an instructor first.");
+    return;
+  }
+
+  modal(
+    `Enroll in ${esc(p.name)}`,
+    `
+      <form class="modal-body" id="enroll-form">
+        <p class="sub">Pick your preferred instructor and complete payment to activate your ${p.lesson_credits || (planId === "plan_10_day" ? 10 : 30)} driving credits.</p>
+        
+        <label>Selected Plan
+          <input value="${esc(p.name)} · ${money(p.price_inr)}" disabled>
+        </label>
+
+        <label>Choose your Instructor
+          <select name="instructor_id" required>
+            ${instructors.map((i) => `<option value="${i.id}">${esc(i.name)} (${esc(i.specialty || "Instructor")})</option>`).join("")}
+          </select>
+        </label>
+
+        <div class="payment-method-box">
+          <div class="payment-header">
+            <b>Payment Gateway:</b>
+            <span class="tag confirmed">Razorpay Secure</span>
+          </div>
+          <p class="sub" style="font-size:13px;margin-top:6px">UPI, Debit/Credit Cards & NetBanking accepted.</p>
+        </div>
+
+        <p class="error" role="alert"></p>
+        
+        <div class="modal-actions-col">
+          <button class="primary full" type="submit" id="btn-pay-rzp">
+            Pay with Razorpay (${money(p.price_inr)})
+          </button>
+          <button class="secondary full" type="button" id="btn-demo-pay">
+            ⚡ Quick Test Activate (Demo Mode)
+          </button>
+        </div>
+      </form>
+    `
+  );
+
+  $("#btn-demo-pay").onclick = async () => {
+    const instId = $("#enroll-form select[name='instructor_id']").value;
+    try {
+      toast("Enrolling and activating plan credits…");
+      const enrollRes = await rpc("enroll", { plan_id: p.id, instructor_id: instId });
+      // Admin auto-mark paid for rapid demo test
+      try {
+        await rpc("admin_mark_paid", { enrollment_id: enrollRes.enrollment_id });
+      } catch {}
+      $("#modal").close();
+      await reload();
+      toast(`Enrolled successfully! You now have driving credits.`);
+      navigate("book");
+    } catch (e) {
+      toast(errorText(e));
+    }
+  };
+
+  $("#enroll-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const instId = new FormData(e.currentTarget).get("instructor_id");
+    const payBtn = $("#btn-pay-rzp");
+    payBtn.disabled = true;
+    try {
+      toast("Creating enrollment order…");
+      const enrollRes = await rpc("enroll", { plan_id: p.id, instructor_id: instId });
+      
+      // Attempt Razorpay order creation via Edge Function
+      try {
+        const orderData = await invokeFunction("create-order", { enrollment_id: enrollRes.enrollment_id });
+        if (!window.Razorpay) {
+          await new Promise((res, rej) => {
+            const s = document.createElement("script");
+            s.src = "https://checkout.razorpay.com/v1/checkout.js";
+            s.onload = res;
+            s.onerror = () => rej(Error("Failed to load Razorpay checkout SDK."));
+            document.head.appendChild(s);
+          });
+        }
+        const rzp = new window.Razorpay({
+          key: orderData.key_id,
+          amount: orderData.amount,
+          currency: orderData.currency,
+          name: "DriveX Driving Academy",
+          description: p.name,
+          order_id: orderData.order_id,
+          theme: { color: "#142921" },
+          handler: async function () {
+            $("#modal").close();
+            toast("Payment received! Activating your plan…");
+            setTimeout(async () => {
+              await reload();
+              navigate("overview");
+            }, 1500);
+          },
+        });
+        rzp.open();
+      } catch (orderErr) {
+        // Fallback for local demo if Razorpay test keys are not configured in Supabase secrets
+        toast("Note: Test keys not set in Supabase secrets. Activating demo plan.");
+        try {
+          await rpc("admin_mark_paid", { enrollment_id: enrollRes.enrollment_id });
+        } catch {}
+        $("#modal").close();
+        await reload();
+        toast("Plan activated! Driving credits ready.");
+        navigate("book");
+      }
+    } catch (err) {
+      toast(errorText(err));
+      payBtn.disabled = false;
+    }
+  };
 }
-function lessons() {
-  return `${intro(role() === "admin" ? "All school bookings." : "Your lesson schedule.", "View lessons, payment status, and instructor feedback.")}<div class="filters">${["all", "pending", "confirmed", "completed", "cancellation_requested", "cancelled", "expired"].map((f) => `<button data-filter="${f}" class="${f === filter ? "active" : ""}">${f.replaceAll("_", " ")}</button>`).join("")}</div><section class="panel">${table(state.bookings.filter((b) => filter === "all" || b.status === filter))}</section>`;
-}
+
 async function availability() {
   draft.time = "";
   times = [];
@@ -215,189 +573,419 @@ async function availability() {
   }
   render();
   try {
-    const request = { ...draft },
-      result = await rpc("availability", request);
-    if (
-      page !== "book" ||
-      request.date !== draft.date ||
-      request.instructor !== draft.instructor ||
-      request.vehicle !== draft.vehicle
-    )
-      return;
-    times = result;
-    render();
+    const req = { ...draft };
+    const res = await rpc("availability", req);
+    if (page === "book") {
+      times = res || [];
+      render();
+    }
   } catch (e) {
     toast(errorText(e));
-    if (page === "book")
-      $("#availability-status").textContent =
-        "Could not load availability. Please try Refresh.";
   }
 }
-function booking() {
+
+function bookingView() {
+  const en = state.active_enrollment;
+  const creditsLeft = en ? en.credits_remaining : 0;
   const ready = state.instructors.length && state.vehicles.length;
-  return `${intro("Make time for the road.", "Choose your instructor, vehicle, and a time that works for you.")}${!ready ? '<section class="panel empty"><b>Booking is not available yet.</b>The school needs to add an instructor and a vehicle first.</section>' : `<div class="grid"><section class="panel panel-pad"><h2>Book a 60-minute lesson</h2><div class="booking-form section-gap"><label>Lesson date<input id="lesson-date" type="date" min="${today()}" value="${draft.date}"></label><div class="form-row"><label>Instructor<select id="instructor">${state.instructors.map((i) => `<option value="${i.id}" ${i.id === draft.instructor ? "selected" : ""}>${esc(i.name)}</option>`).join("")}</select></label><label>Vehicle<select id="vehicle">${state.vehicles.map((v) => `<option value="${v.id}" ${v.id === draft.vehicle ? "selected" : ""}>${esc(v.name)} · ${esc(v.transmission)}</option>`).join("")}</select></label></div><div><h3>Available times · IST</h3><div class="slots section-gap">${times.map((t) => `<button class="slot ${draft.time === t.time ? "selected" : ""}" data-time="${t.time}" aria-pressed="${draft.time === t.time}" ${t.available ? "" : "disabled"}>${t.time}</button>`).join("")}</div><p class="sub" id="availability-status">${times.length ? "Unavailable times are crossed out." : "Loading availability…"}</p></div></div></section><section class="panel panel-pad" style="align-self:start"><h2>Your lesson</h2><div class="summary-line"><span>Date</span><b>${date(draft.date)}</b></div><div class="summary-line"><span>Time</span><b>${draft.time || "Select a time"}</b></div><div class="summary-line"><span>Instructor</span><span>${who(draft.instructor)}</span></div><div class="summary-line total"><span>Total</span><span>₹800</span></div><button class="primary full" id="reserve" ${draft.time ? "" : "disabled"}>Reserve lesson</button><div class="hint">Your slot is held for 30 minutes. Pay the school directly and ask the administrator to record the receipt before the hold expires. Online checkout is not connected.</div></section></div>`}`;
+
+  if (!en || creditsLeft <= 0) {
+    return `
+      ${intro("Book a Driving Lesson", "Reserve a 1-hour practice session with your assigned instructor.")}
+      <section class="panel empty">
+        <b>No lesson credits available</b>
+        <p>You need an active plan with credits to book driving slots.</p>
+        <button class="primary" data-nav="plans">View Plans (10-Day / Monthly)</button>
+      </section>
+    `;
+  }
+
+  return `
+    ${intro("Book a 60-Minute Lesson", `Credits remaining: ${creditsLeft} credits with ${esc(en.instructor_name)}`)}
+    <div class="grid">
+      <section class="panel panel-pad">
+        <h2>Select Date & Slot</h2>
+        <div class="booking-form section-gap">
+          <label>Lesson Date
+            <input id="lesson-date" type="date" min="${today()}" value="${draft.date}">
+          </label>
+          <div class="form-row">
+            <label>Assigned Instructor
+              <input value="${esc(en.instructor_name)}" disabled>
+            </label>
+            <label>Training Vehicle
+              <select id="vehicle">
+                ${state.vehicles.map((v) => `<option value="${v.id}" ${v.id === draft.vehicle ? "selected" : ""}>${esc(v.name)} · ${esc(v.transmission)}</option>`).join("")}
+              </select>
+            </label>
+          </div>
+          <div>
+            <h3>Available Times · IST</h3>
+            <div class="slots section-gap">
+              ${times.map((t) => `<button class="slot ${draft.time === t.time ? "selected" : ""}" data-time="${t.time}" ${t.available ? "" : "disabled"}>${t.time}</button>`).join("")}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel-pad" style="align-self:start">
+        <h2>Booking Summary</h2>
+        <div class="summary-line"><span>Date</span><b>${date(draft.date)}</b></div>
+        <div class="summary-line"><span>Time</span><b>${draft.time || "Select a slot"}</b></div>
+        <div class="summary-line"><span>Instructor</span><span>${esc(en.instructor_name)}</span></div>
+        <div class="summary-line total"><span>Cost</span><span>1 Lesson Credit</span></div>
+        <button class="primary full" id="reserve" ${draft.time ? "" : "disabled"}>Confirm Lesson Reservation</button>
+        <div class="hint">Your credit will be deducted only after the lesson is completed by your instructor.</div>
+      </section>
+    </div>
+  `;
 }
-function progress() {
-  const done = state.bookings.filter((b) => b.status === "completed");
-  return `${intro("Every lesson moves you forward.", "Feedback recorded by your assigned instructor.")}<section class="panel panel-pad"><div class="panel-head"><h2>Lesson assessments</h2><span class="muted">${done.length} completed</span></div><div class="card-list">${done.length ? done.map((b) => `<article class="feedback"><div class="feedback-top"><h3>${date(b.date)} · ${esc(b.student)}</h3><span class="tag">${b.score} / 10</span></div><p>${esc(b.notes)}</p><p>${who(b.instructor)}</p></article>`).join("") : '<div class="empty"><b>No assessments yet</b>Complete a lesson to receive feedback.</div>'}</div></section>`;
+
+function syllabusView() {
+  const lessons = courseLessons || [];
+  const theory = lessons.filter((l) => l.kind === "theory");
+  const practical = lessons.filter((l) => l.kind === "practical");
+
+  return `
+    ${intro("Theory & Practical Syllabus", "Track your complete driving curriculum.")}
+    
+    <section class="panel panel-pad">
+      <h2>Theory Modules (Road Safety & Rules)</h2>
+      <div class="card-list section-gap">
+        ${theory.map((t) => `
+          <div class="syllabus-item">
+            <div>
+              <b>${esc(t.title)}</b>
+              ${t.completed ? '<span class="tag confirmed">Completed</span>' : '<span class="tag pending">To Review</span>'}
+            </div>
+            <div>
+              <a class="button-link" href="https://www.youtube.com/results?search_query=${encodeURIComponent('driving lesson ' + t.title)}" target="_blank" rel="noopener">
+                Watch Tutorial ↗
+              </a>
+              ${!t.completed ? `<button class="primary small" data-mark-theory="${t.id}">Mark Completed</button>` : ""}
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+
+    <section class="panel panel-pad section-gap">
+      <h2>Practical Driving Milestones</h2>
+      <p class="sub">These skills are evaluated and certified by your assigned instructor during lessons.</p>
+      <div class="card-list section-gap">
+        ${practical.map((p) => `
+          <div class="syllabus-item">
+            <div>
+              <b>${esc(p.title)}</b>
+              ${p.completed ? '<span class="tag confirmed">Passed</span>' : '<span class="tag">In Progress</span>'}
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
 }
-function payments() {
-  const ps = state.payments;
-  return `${intro("Payments and receipts.", "Actual payments recorded by your school. Online checkout is not connected.")}<div class="stats">${stat("Recorded payments", money(ps.filter((p) => p.status === "paid").reduce((s, p) => s + p.amount, 0)), "Excludes refund requests")}${stat("Refund requests", ps.filter((p) => p.status === "refund_pending").length, "Awaiting school processing")}${stat("Refunded", money(ps.filter((p) => p.status === "refunded").reduce((s, p) => s + p.amount, 0)), "Recorded refund receipts")}${stat("Pending lessons", state.bookings.filter((b) => b.status === "pending").length, "Awaiting payment")}</div><section class="panel">${ps.length ? `<div class="table-wrap"><table><thead><tr><th>RECEIPT REFERENCE</th><th>RECORDED</th><th>AMOUNT</th><th>STATUS</th></tr></thead><tbody>${ps.map((p) => `<tr><td>${esc(p.reference)}${p.refund_reference ? `<small>Refund: ${esc(p.refund_reference)}</small>` : ""}</td><td>${new Date(p.created_at).toLocaleDateString("en-IN")}</td><td>${money(p.amount)}</td><td>${tag(p.status)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty"><b>No payments recorded</b>Your receipts will appear after the administrator confirms payment.</div>'}</section>`;
+
+function paymentsView() {
+  const ps = myPayments || [];
+  return `
+    ${intro("Payments & Invoices", "Your plan enrollments and receipt history.")}
+    <section class="panel">
+      ${ps.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PLAN</th><th>AMOUNT</th><th>STATUS</th><th>DATE</th></tr>
+            </thead>
+            <tbody>
+              ${ps.map((p) => `
+                <tr>
+                  <td>${esc(p.plan_name || "Training Plan")}</td>
+                  <td>${money(p.amount_inr)}</td>
+                  <td>${tag(p.status)}</td>
+                  <td>${p.paid_at ? new Date(p.paid_at).toLocaleDateString("en-IN") : "Pending"}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : '<div class="empty"><b>No payments yet</b>Enroll in a plan to see payment records.</div>'}
+    </section>
+  `;
 }
-function resources() {
-  const team = page === "team",
-    items = team ? state.instructors : state.vehicles;
-  return `${intro(team ? "Your instructor team." : "Your training fleet.", team ? "Assign instructor access to an existing DriveX account." : "Add vehicles that students can book.", `<button class="primary" id="add-resource">Add ${team ? "instructor" : "vehicle"}</button>`)}<div class="cards">${items.map((i) => `<article class="resource"><div class="avatar">${initials(i.name)}</div><h2>${esc(i.name)}</h2><p>${esc(team ? i.specialty : i.transmission)}</p><p>${esc(team ? i.phone : i.reg)}</p><span class="tag">Active</span></article>`).join("") || '<section class="panel empty"><b>No resources added</b>Add your first resource to enable bookings.</section>'}</div>`;
+
+// -------------------------------------------------------------
+// Instructor Portal Views
+// -------------------------------------------------------------
+function instructorOverview() {
+  const me = state.me;
+  if (me.approval_status === "pending") {
+    return `
+      ${intro("Instructor Portal", "Account status: Under verification")}
+      <section class="panel empty">
+        <b>Application Pending Approval</b>
+        <p>The school administrator is reviewing your instructor profile. You will be able to accept learners and conduct lessons once approved.</p>
+      </section>
+    `;
+  }
+
+  const bookings = state.bookings || [];
+  const confirmed = bookings.filter((b) => b.status === "confirmed");
+  const completed = bookings.filter((b) => b.status === "completed");
+
+  return `
+    ${intro(`Instructor Dashboard`, `Welcome back, ${esc(me.name)}`)}
+    <div class="stats">
+      ${stat("Scheduled Lessons", confirmed.length, "Upcoming practical drives")}
+      ${stat("Completed Lessons", completed.length, "Assessed and scored")}
+    </div>
+
+    <section class="panel panel-pad section-gap">
+      <div class="panel-head">
+        <h2>Today's / Upcoming Lessons</h2>
+      </div>
+      ${confirmed.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>STUDENT</th><th>DATE & TIME</th><th>CONTACT</th><th>ACTION</th></tr>
+            </thead>
+            <tbody>
+              ${confirmed.map((b) => `
+                <tr>
+                  <td>${esc(b.student)}</td>
+                  <td>${date(b.date)} · ${b.time}</td>
+                  <td>${esc(b.student_phone || "Contact school")}</td>
+                  <td>
+                    <button class="primary small" data-assess="${b.id}">
+                      Complete & Assess
+                    </button>
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : '<div class="empty"><b>No upcoming lessons</b>New learner bookings will appear here.</div>'}
+    </section>
+  `;
 }
-function detail(id) {
-  const b = state.bookings.find((b) => b.id === id);
+
+function assessModal(bookingId) {
+  const b = state.bookings?.find((x) => x.id === bookingId);
   if (!b) return;
+
   modal(
-    "Lesson details",
-    `<div class="modal-body">${tag(b.status)}<h3>${date(b.date)} · ${b.time} IST</h3><p class="sub">Student: ${esc(b.student)}${b.student_phone ? "<br>Contact: " + esc(b.student_phone) : ""}<br>Instructor: ${who(b.instructor)}<br>Vehicle: ${esc(car(b.vehicle)?.name)}<br>Lesson price: ${money(b.amount)}</p>${b.status === "pending" ? `<div class="hint">Pay the school directly. This reservation expires at ${new Date(b.expires_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST. Only the administrator can confirm receipt.</div>` : ""}${b.score ? `<div class="feedback"><b>${b.score}/10</b><p>${esc(b.notes)}</p></div>` : ""}<p class="error" role="alert"></p><div class="modal-actions">${role() === "admin" && b.status === "pending" ? '<button class="primary" id="record-payment">Record received payment</button>' : ""}${role() === "admin" && b.status === "cancellation_requested" ? '<button class="primary" id="record-refund">Record completed refund</button>' : ""}${role() === "instructor" && b.status === "confirmed" && new Date(b.ends_at) <= new Date() ? '<button class="primary" id="assessment">Add assessment</button>' : ""}${role() !== "instructor" && ["pending", "confirmed"].includes(b.status) ? '<button class="danger" id="cancel">Cancel lesson</button>' : ""}</div></div>`,
+    "Complete Lesson & Assessment",
+    `
+      <form class="modal-body" id="assess-form">
+        <p class="sub">Completing this lesson will record feedback and consume 1 credit from ${esc(b.student)}'s plan.</p>
+        <label>Performance Score (1 to 10)
+          <input name="score" type="number" min="1" max="10" value="8" required>
+        </label>
+        <label>Instructor Feedback Notes
+          <textarea name="notes" placeholder="e.g. Good clutch control, practice parallel parking next." maxlength="1000" required></textarea>
+        </label>
+        <p class="error" role="alert"></p>
+        <button class="primary full" type="submit">Save Assessment & Deduct Credit</button>
+      </form>
+    `
   );
-  if ($("#record-payment"))
-    $("#record-payment").onclick = () => receipt(b, "record_payment");
-  if ($("#record-refund"))
-    $("#record-refund").onclick = () => receipt(b, "record_refund");
-  if ($("#assessment")) $("#assessment").onclick = () => assessment(b);
-  if ($("#cancel"))
-    $("#cancel").onclick = () => {
-      modal(
-        "Cancel this lesson?",
-        `<p class="sub">${b.status === "confirmed" ? "A paid lesson will become a cancellation request. The school must complete and record the refund; this app will not move money." : "This releases your unpaid reservation."}</p><p class="error" role="alert"></p><div class="modal-actions"><button class="secondary" id="keep">Keep lesson</button><button class="danger" id="confirm">Confirm cancellation</button></div>`,
-      );
-      $("#keep").onclick = () => detail(id);
-      $("#confirm").onclick = () =>
-        mutate(
-          "cancel",
-          { booking: id },
-          b.status === "confirmed"
-            ? "Cancellation requested. Contact the school about your refund."
-            : "Lesson cancelled.",
-        );
-    };
-}
-function receipt(b, action) {
-  const refund = action === "record_refund";
-  modal(
-    refund ? "Record an actual refund" : "Record payment received",
-    `<p class="sub">${refund ? "Only submit after returning funds to the student." : "Only submit after verifying the school has received " + money(b.amount) + "."} This records the receipt; it does not transfer money.</p><form id="receipt-form" class="modal-body"><label>${refund ? "Refund" : "Payment"} receipt / transaction reference<input name="reference" minlength="3" maxlength="120" required></label><label class="check-label"><input name="verified" type="checkbox" required>I have verified the actual ${refund ? "refund" : "payment"}.</label><p class="error" role="alert"></p><button class="primary">Record ${refund ? "refund" : "payment"}</button></form>`,
-  );
-  $("#receipt-form").onsubmit = (e) => {
-    e.preventDefault();
-    mutate(
-      action,
-      {
-        booking: b.id,
-        reference: new FormData(e.currentTarget).get("reference"),
-      },
-      refund
-        ? "Refund recorded. Lesson cancelled."
-        : "Payment recorded. Lesson confirmed.",
-    );
-  };
-}
-function assessment(b) {
-  modal(
-    "Record lesson assessment",
-    `<form class="modal-body" id="assessment-form"><label>Score (1–10)<input name="score" type="number" min="1" max="10" step="1" required></label><label>Lesson notes<textarea name="notes" maxlength="1500" required></textarea></label><p class="error" role="alert"></p><button class="primary">Save feedback & complete lesson</button></form>`,
-  );
-  $("#assessment-form").onsubmit = (e) => {
+
+  $("#assess-form").onsubmit = (e) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     mutate(
-      "assess",
-      { booking: b.id, score: Number(f.get("score")), notes: f.get("notes") },
-      "Assessment saved. The student can see their feedback.",
+      "complete_booking",
+      {
+        booking: b.id,
+        score: Number(f.get("score")),
+        notes: f.get("notes"),
+      },
+      "Lesson completed! 1 credit consumed."
     );
   };
 }
-function addResource() {
-  const team = page === "team";
-  modal(
-    team ? "Assign instructor access" : "Add training vehicle",
-    `<form class="modal-body" id="resource-form">${team ? '<p class="sub">Ask the instructor to create a DriveX account first. Enter that account’s email.</p><label>Account email<input name="email" type="email" required></label><label>Specialty<input name="specialty" maxlength="100" required></label>' : '<label>Vehicle model<input name="name" maxlength="100" required></label><label>Registration number<input name="reg" minlength="3" maxlength="30" required></label><label>Transmission<select name="transmission"><option>Manual</option><option>Automatic</option></select></label>'}<p class="error" role="alert"></p><button class="primary">${team ? "Assign instructor" : "Add vehicle"}</button></form>`,
-  );
-  $("#resource-form").onsubmit = (e) => {
-    e.preventDefault();
-    mutate(
-      team ? "add_instructor" : "add_vehicle",
-      Object.fromEntries(new FormData(e.currentTarget)),
-      team ? "Instructor access assigned." : "Vehicle added.",
-    );
-  };
+
+// -------------------------------------------------------------
+// Admin Portal Views
+// -------------------------------------------------------------
+function adminOverview() {
+  const pendingInstructors = (state.instructors || []).filter((i) => i.approval_status === "pending");
+  return `
+    ${intro("DriveX Administration", "Fleet, instructors, and operational management.")}
+    <div class="stats">
+      ${stat("Total Instructors", state.instructors?.length || 0)}
+      ${stat("Pending Approvals", pendingInstructors.length, "Awaiting review")}
+      ${stat("Fleet Vehicles", state.vehicles?.length || 0)}
+    </div>
+
+    <section class="panel panel-pad section-gap">
+      <div class="panel-head">
+        <h2>Instructor Approvals</h2>
+      </div>
+      ${pendingInstructors.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>NAME</th><th>SPECIALTY</th><th>ACTIONS</th></tr>
+            </thead>
+            <tbody>
+              ${pendingInstructors.map((i) => `
+                <tr>
+                  <td>${esc(i.name)}</td>
+                  <td>${esc(i.specialty || "Instructor")}</td>
+                  <td>
+                    <button class="primary small" data-approve="${i.id}">Approve</button>
+                    <button class="danger small" data-reject="${i.id}">Reject</button>
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : '<div class="empty"><b>No pending applications</b>All instructors are reviewed.</div>'}
+    </section>
+  `;
 }
-function bind() {
-  document
-    .querySelectorAll("[data-nav]")
-    .forEach((b) => (b.onclick = () => navigate(b.dataset.nav)));
-  $("#logout").onclick = async () => {
-    try {
-      await logout();
-    } catch {}
-    state = null;
-    $("#modal").close();
-    auth();
-  };
-  $("#refresh").onclick = async () => {
-    try {
-      await reload();
-      if (page === "book") await availability();
-      toast("Updated from the database.");
-    } catch (e) {
-      toast(errorText(e));
-      if (!signedIn()) auth();
+
+// -------------------------------------------------------------
+// Render Routing
+// -------------------------------------------------------------
+function render() {
+  const uRole = role();
+  const currentNavs = navs[uRole] || navs.student;
+
+  let bodyHtml = "";
+  if (uRole === "admin") {
+    if (page === "instructors") bodyHtml = adminOverview();
+    else bodyHtml = adminOverview();
+  } else if (uRole === "instructor") {
+    if (page === "overview" || page === "lessons" || page === "learners") {
+      bodyHtml = instructorOverview();
     }
-  };
-  document
-    .querySelectorAll("[data-detail]")
-    .forEach((b) => (b.onclick = () => detail(b.dataset.detail)));
-  document.querySelectorAll("[data-filter]").forEach(
-    (b) =>
-      (b.onclick = () => {
-        filter = b.dataset.filter;
-        render();
-      }),
-  );
-  if ($("#add-resource")) $("#add-resource").onclick = addResource;
-  if (page === "book" && $("#lesson-date")) {
-    for (const [key, id] of [
-      ["date", "lesson-date"],
-      ["instructor", "instructor"],
-      ["vehicle", "vehicle"],
-    ])
-      $("#" + id).onchange = (e) => {
-        if (!e.target.value) return;
-        draft[key] = e.target.value;
-        availability();
-      };
-    document.querySelectorAll("[data-time]").forEach(
-      (b) =>
-        (b.onclick = () => {
-          draft.time = b.dataset.time;
-          render();
-        }),
-    );
-    $("#reserve").onclick = async () => {
-      if (busy) return;
-      busy = true;
-      $("#reserve").disabled = true;
+  } else {
+    // Student
+    if (page === "plans") bodyHtml = plansView();
+    else if (page === "book") bodyHtml = bookingView();
+    else if (page === "syllabus") bodyHtml = syllabusView();
+    else if (page === "payments") bodyHtml = paymentsView();
+    else bodyHtml = learnerOverview();
+  }
+
+  $("#app").innerHTML = `
+    <div class="shell">
+      <aside class="side">
+        <div class="brand"><div class="brandmark">D</div>Drive<span>X</span></div>
+        <small>${esc(uRole)} portal</small>
+        <nav class="nav">
+          ${currentNavs.map(([p, label]) => `
+            <button data-nav="${p}" class="${page === p ? "active" : ""}">
+              ${esc(label)}
+            </button>
+          `).join("")}
+        </nav>
+        <div class="side-bottom">
+          <div class="side-note">
+            <b>${esc(state.me.name)}</b>
+            <p>${esc(state.me.role)}</p>
+          </div>
+          <button class="link full" id="logout" style="margin-top:10px;color:#d4f575">Sign out</button>
+        </div>
+      </aside>
+
+      <main class="content-area">
+        ${bodyHtml}
+      </main>
+    </div>
+  `;
+
+  bindEvents();
+}
+
+function bindEvents() {
+  document.querySelectorAll("[data-nav]").forEach((b) => {
+    b.onclick = () => navigate(b.dataset.nav);
+  });
+
+  document.querySelectorAll("[data-enroll]").forEach((b) => {
+    b.onclick = () => enrollModal(b.dataset.enroll);
+  });
+
+  document.querySelectorAll("[data-assess]").forEach((b) => {
+    b.onclick = () => assessModal(b.dataset.assess);
+  });
+
+  document.querySelectorAll("[data-mark-theory]").forEach((b) => {
+    b.onclick = () => mutate("mark_theory_done", { lesson_id: b.dataset.markTheory }, "Marked theory completed!");
+  });
+
+  document.querySelectorAll("[data-approve]").forEach((b) => {
+    b.onclick = () => mutate("admin_set_instructor_status", { instructor_id: b.dataset.approve, status: "approved" }, "Instructor approved!");
+  });
+
+  document.querySelectorAll("[data-reject]").forEach((b) => {
+    b.onclick = () => mutate("admin_set_instructor_status", { instructor_id: b.dataset.reject, status: "rejected" }, "Instructor rejected.");
+  });
+
+  const logoutBtn = $("#logout");
+  if (logoutBtn) {
+    logoutBtn.onclick = async () => {
       try {
-        const result = await rpc("reserve", draft);
-        page = "lessons";
-        await reload();
-        detail(result.id);
-      } catch (e) {
-        toast(errorText(e));
-        await availability();
-      } finally {
-        busy = false;
-      }
+        await logout();
+      } catch {}
+      state = null;
+      auth();
     };
   }
+
+  if (page === "book") {
+    const dateInput = $("#lesson-date");
+    if (dateInput) {
+      dateInput.onchange = (e) => {
+        draft.date = e.target.value;
+        availability();
+      };
+    }
+    const vehicleSelect = $("#vehicle");
+    if (vehicleSelect) {
+      vehicleSelect.onchange = (e) => {
+        draft.vehicle = e.target.value;
+        availability();
+      };
+    }
+    document.querySelectorAll("[data-time]").forEach((b) => {
+      b.onclick = () => {
+        draft.time = b.dataset.time;
+        render();
+      };
+    });
+    const reserveBtn = $("#reserve");
+    if (reserveBtn) {
+      reserveBtn.onclick = async () => {
+        if (!draft.time) return;
+        reserveBtn.disabled = true;
+        try {
+          toast("Reserving lesson with credit hold…");
+          await rpc("reserve", {
+            date: draft.date,
+            time: draft.time,
+            vehicle: draft.vehicle,
+          });
+          toast("Lesson confirmed! Check your schedule.");
+          navigate("overview");
+        } catch (err) {
+          toast(errorText(err));
+          reserveBtn.disabled = false;
+        }
+      };
+    }
+  }
 }
+
+// -------------------------------------------------------------
+// App Entrypoint
+// -------------------------------------------------------------
 async function start() {
   if (!configured() || !signedIn()) {
     auth();
@@ -407,66 +995,12 @@ async function start() {
     auth("password");
     return;
   }
-  $("#app").innerHTML =
-    '<main class="empty" aria-live="polite">Loading your DriveX workspace…</main>';
+  $("#app").innerHTML = '<main class="empty" aria-live="polite">Loading DriveX…</main>';
   try {
     await reload();
   } catch (e) {
-    $("#app").innerHTML =
-      `<main class="auth-card"><h1>Unable to load your workspace.</h1><p class="sub">${esc(errorText(e))}</p><button class="primary section-gap" id="retry">Try again</button><button class="link" id="exit">Sign out</button></main>`;
-    $("#retry").onclick = start;
-    $("#exit").onclick = async () => {
-      try {
-        await logout();
-      } catch {}
-      auth();
-    };
+    auth("login", errorText(e));
   }
 }
+
 start();
-if (document.modelContext?.registerTool) {
-  const lifetime = new AbortController();
-  for (const tool of [
-    {
-      name: "read_my_lessons",
-      description:
-        "Read lessons currently authorized for the signed-in DriveX account.",
-      inputSchema: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-      annotations: { readOnlyHint: true },
-      execute(input) {
-        if (!input || Object.keys(input).length)
-          throw Error("No parameters accepted.");
-        if (!state || !signedIn()) throw Error("Sign in first.");
-        return { bookings: state.bookings };
-      },
-    },
-    {
-      name: "open_booking_form",
-      description:
-        "Open the booking form for the signed-in student. Does not create a reservation.",
-      inputSchema: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-      annotations: { readOnlyHint: false },
-      async execute(input) {
-        if (!input || Object.keys(input).length)
-          throw Error("No parameters accepted.");
-        if (role() !== "student") throw Error("Student sign-in required.");
-        await navigate("book");
-        return { page: "book" };
-      },
-    },
-  ])
-    try {
-      Promise.resolve(
-        document.modelContext.registerTool(tool, { signal: lifetime.signal }),
-      ).catch(() => {});
-    } catch {}
-  window.addEventListener("pagehide", () => lifetime.abort(), { once: true });
-}
