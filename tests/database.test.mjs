@@ -19,10 +19,11 @@ create function auth.uid() returns uuid language sql stable as $$select nullif(c
 grant usage on schema auth to authenticated;
 grant execute on function auth.uid() to authenticated;`);
 
-  // Apply migrations 0001, 0002, 0003 in order
+  // Apply migrations 0001, 0002, 0003, 0004 in order
   await db.exec(await readFile(new URL("../supabase/migrations/0001_init.sql", import.meta.url), "utf8"));
   await db.exec(await readFile(new URL("../supabase/migrations/0002_razorpay.sql", import.meta.url), "utf8"));
   await db.exec(await readFile(new URL("../supabase/migrations/0003_plans.sql", import.meta.url), "utf8"));
+  await db.exec(await readFile(new URL("../supabase/migrations/0004_simplify_app.sql", import.meta.url), "utf8"));
 
   for (const [name, id] of Object.entries(ids)) {
     await db.query("insert into auth.users values($1,$2,$3)", [
@@ -168,4 +169,27 @@ grant execute on function auth.uid() to authenticated;`);
     const pRes = await as("instructor", "mark_practical_done", { lesson_id: practical.id, learner_id: ids.student });
     assert.equal(pRes.status, "success");
   });
+
+  await t.test("learner can directly pay and activate enrollment via pay_enrollment", async () => {
+    // Other learner enrolls in monthly plan
+    await as("other", "me");
+    const en = await as("other", "enroll", { plan_id: "plan_monthly", instructor_id: ids.instructor });
+    assert.equal(en.status, "pending_payment");
+
+    const paid = await as("other", "pay_enrollment", { enrollment_id: en.enrollment_id });
+    assert.equal(paid.status, "active");
+    assert.equal(paid.credits_remaining, 30);
+
+    const snap = await as("other", "me");
+    assert.equal(snap.active_enrollment.credits_total, 30);
+    assert.equal(snap.active_enrollment.credits_remaining, 30);
+  });
+
+  await t.test("user can switch role via set_my_role", async () => {
+    const updated = await as("other", "set_my_role", { role: "instructor", specialty: "Highway Specialist" });
+    assert.equal(updated.role, "instructor");
+    assert.equal(updated.specialty, "Highway Specialist");
+    assert.equal(updated.approval_status, "approved");
+  });
 });
+
