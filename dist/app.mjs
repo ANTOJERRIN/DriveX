@@ -8,6 +8,7 @@ import {
   changePassword,
   handleCallback,
   rpc,
+  invokeFunction,
 } from "./api.mjs";
 const $ = (s) => document.querySelector(s),
   esc = (s) =>

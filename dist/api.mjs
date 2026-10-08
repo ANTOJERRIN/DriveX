@@ -122,3 +122,7 @@ export async function rpc(action, payload = {}) {
     { token: await token() },
   );
 }
+export async function invokeFunction(name, payload = {}) {
+  return request(`/functions/v1/${name}`, payload, { token: await token() });
+}
+
