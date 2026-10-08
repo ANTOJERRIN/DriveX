@@ -25,7 +25,13 @@ There is no frontend build or CDN JavaScript dependency. Google Fonts is optiona
 ## Connect the real backend
 
 1. Create a dedicated project named **DriveX** in ANTOJERRIN's Org. Review Supabase's cost before creating it.
-2. Apply `backend/schema.sql` once using the project's SQL editor or the connected database tool. It creates only DriveX-owned tables/functions. Do not apply the superseded schema from the older demo commit.
+2. Link and push migrations using the Supabase CLI:
+   ```sh
+   npx supabase login
+   npx supabase link --project-ref <your-project-ref>
+   npm run db:push
+   ```
+   Alternatively, run `supabase/migrations/0001_init.sql` once via the project's SQL editor. Do not apply superseded schemas from older demo commits.
 3. Configure Supabase Auth's Site URL to your deployed app URL and allow `http://localhost:3000` for local testing. Keep email confirmation enabled. Configure SMTP for reliable signup/password-reset delivery.
 4. Set `supabaseUrl` and the **publishable** key in `dist/config.mjs`. They are public client configuration. Never place a service-role/secret key in the frontend, GitHub, or chat.
 5. Deploy the configured frontend, create the owner's account, confirm email and sign in once. It initially has student access.

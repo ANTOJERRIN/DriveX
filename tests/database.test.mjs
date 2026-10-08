@@ -18,7 +18,10 @@ test("real Postgres schema and complete authorized booking lifecycle", async (t)
  grant usage on schema auth to authenticated;
  grant execute on function auth.uid() to authenticated;`);
   await db.exec(
-    await readFile(new URL("../backend/schema.sql", import.meta.url), "utf8"),
+    await readFile(
+      new URL("../supabase/migrations/0001_init.sql", import.meta.url),
+      "utf8",
+    ),
   );
   for (const [name, id] of Object.entries(ids))
     await db.query("insert into auth.users values($1,$2,$3)", [
