@@ -19,4 +19,10 @@ union all select '10-Day plan: INR 1500 and 10 credits',exists(select 1 from dri
 union all select 'Monthly plan: INR 4000 and 30 credits',exists(select 1 from drivex_private.plans where id='plan_monthly' and price_inr=4000 and lesson_credits=30)
 union all select '8 theory and 5 practical lessons',(select count(*) filter(where kind='theory')=8 and count(*) filter(where kind='practical')=5 from drivex_private.course_lessons)
 union all select 'three booking exclusion constraints',(select count(*)=3 from pg_constraint where conrelid='drivex_private.bookings'::regclass and contype='x')
-union all select 'server payment identifiers unique',(select count(*)=3 from pg_indexes where schemaname='drivex_private' and indexname in ('payments_provider_order_unique','payments_provider_payment_unique','payments_enrollment_unique'));
+union all select 'server payment identifiers unique',(select count(*)=3 from pg_indexes where schemaname='drivex_private' and indexname in ('payments_provider_order_unique','payments_provider_payment_unique','payments_enrollment_unique'))
+union all select 'instructor availability tables exist',to_regclass('drivex_private.instructor_hours') is not null and to_regclass('drivex_private.instructor_blocked_dates') is not null
+union all select 'old dispatchers cannot bypass new rules',not has_function_privilege('authenticated','drivex_private.dispatch_before_availability(text,jsonb)','EXECUTE')
+ and not has_function_privilege('authenticated','drivex_private.dispatch_with_availability(text,jsonb)','EXECUTE')
+union all select 'notification queue is service-only',has_function_privilege('service_role','public.drivex_notification_jobs(text,jsonb)','EXECUTE')
+ and not has_function_privilege('authenticated','public.drivex_notification_jobs(text,jsonb)','EXECUTE') and not has_function_privilege('anon','public.drivex_notification_jobs(text,jsonb)','EXECUTE')
+union all select 'booking and refund queue triggers exist',(select count(*)=2 from pg_trigger where tgname in ('drivex_booking_notifications','drivex_refund_notifications') and not tgisinternal);

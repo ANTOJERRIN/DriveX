@@ -55,6 +55,10 @@ export async function createFixtureServer({port=0,seedPaid=false,paymentsEnabled
      if(!ids[user])return send(401,{message:'Please sign in.'});
      return send(200,await serial(()=>h.as(user,body.action,body.payload)));
     }
+    if(url.pathname==='/rest/v1/rpc/drivex_notification_jobs'){
+     if(req.headers.authorization!=='Bearer '+settings.SUPABASE_SERVICE_ROLE_KEY)return send(403,{message:'Service access required.'});
+     return send(200,await serial(()=>h.server('drivex_notification_jobs',[body.action,JSON.stringify(body.payload||{})])));
+    }
     if(url.pathname==='/rest/v1/rpc/register_payment_order'||url.pathname==='/rest/v1/rpc/process_payment_event'){
      if(req.headers.authorization!=='Bearer '+settings.SUPABASE_SERVICE_ROLE_KEY)return send(403,{message:'Service access required.'});
      const registration=url.pathname.endsWith('/register_payment_order');

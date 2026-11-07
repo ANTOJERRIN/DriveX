@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Recognizable, nonfunctional fixture literals used by the test suite, never real credentials.
-const fixtures=new Set(['sb_secret_fixture','sb_secret_never_expose','rzp_live_fixture','fixture-private','fixture-webhook','test-service']);
+const fixtures=new Set(['sb_secret_fixture','sb_secret_never_expose','rzp_live_fixture','fixture-private','fixture-webhook','test-service','fixture-mail-key']);
 export function scanText(source) {
  const kinds=new Set();
  for(const match of source.matchAll(/\b(?:sb_secret_[A-Za-z0-9_-]+|rzp_live_[A-Za-z0-9]+)\b/g)) {
@@ -13,7 +13,7 @@ export function scanText(source) {
  for(const match of source.matchAll(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g)) {
   try {if(JSON.parse(Buffer.from(match[0].split('.')[1],'base64url').toString('utf8')).role==='service_role')kinds.add('service-role JWT');}catch{}
  }
- for(const match of source.matchAll(/\b(?:RAZORPAY_KEY_SECRET|RAZORPAY_WEBHOOK_SECRET|SUPABASE_SERVICE_ROLE_KEY)\s*[:=]\s*["']([^"'\r\n]+)["']/g)) {
+ for(const match of source.matchAll(/\b(?:RAZORPAY_KEY_SECRET|RAZORPAY_WEBHOOK_SECRET|SUPABASE_SERVICE_ROLE_KEY|RESEND_API_KEY|NOTIFICATION_WORKER_TOKEN)\s*[:=]\s*["']([^"'\r\n]+)["']/g)) {
   if(!fixtures.has(match[1])&&!/^(?:\.\.\.|<[^>]+>|YOUR_[A-Z_]+)$/.test(match[1]))kinds.add('literal server credential');
  }
  return [...kinds];
@@ -27,8 +27,8 @@ export function audit() {
  const findings=[];
  const files=git(['ls-files','-z','--cached','--others','--exclude-standard']).split('\0').filter(Boolean);
  for(const file of files) {
-  if(/^\.env(?:\.|$)/.test(file)&&file!=='.env.example'){findings.push({file,kind:'tracked/private env file'});continue;}
-  if(!/\.(?:mjs|js|ts|sql|md|json|ya?ml|toml|example)$/.test(file)&&file!=='.gitignore')continue;
+  if(/(?:^|\/)\.env(?:\.|$)/.test(file)&&!file.endsWith('.env.example')){findings.push({file,kind:'tracked/private env file'});continue;}
+  if(!/\.(?:mjs|js|ts|sql|md|json|ya?ml|toml|example|html|css|webmanifest|svg)$/.test(file)&&file!=='.gitignore')continue;
   for(const kind of scanText(readFileSync(file,'utf8')))findings.push({file,kind});
  }
  const history=git(['log','--all','--format=__COMMIT__%h','--no-ext-diff','-p','--','.']);

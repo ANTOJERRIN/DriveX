@@ -8,7 +8,7 @@ test('DriveX full plan lifecycle and authorization with every migration',async t
  const h=await database(),{db,as,paid,enroll,vehicle}=h;t.after(()=>db.close());
  let enrollment,booking;
  await t.test('all migrations load, prices are server controlled and sample fleet stays inactive',async()=>{
-  assert.equal(h.migrations.length,5);
+  assert.equal(h.migrations.length,8);
   const plans=await as('student','plans_list');assert.deepEqual(plans.map(p=>[p.price_inr,p.lesson_credits]),[[1500,10],[4000,30]]);
   const snap=await as('student','snapshot');assert.equal(snap.bookings.length,0);assert.equal(snap.vehicles.length,1);assert.equal(snap.vehicles[0].id,vehicle);
   await db.exec('reset role');
@@ -27,7 +27,7 @@ test('DriveX full plan lifecycle and authorization with every migration',async t
  });
  await t.test('metadata edits and browser role/payment switches cannot grant privileges',async()=>{
   const requestedAdmin='10000000-0000-0000-0000-000000000001';
-  await db.exec('reset role');await db.query('insert into auth.users values($1,$2,$3)',[requestedAdmin,'role-request@example.test',JSON.stringify({name:'Role request',role:'admin'})]);
+  await db.exec('reset role');await db.query('insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)',[requestedAdmin,'role-request@example.test',JSON.stringify({name:'Role request',role:'admin'})]);
   assert.equal((await as(requestedAdmin,'me')).me.role,'student');
   await db.exec('reset role');await db.query("update auth.users set raw_user_meta_data=raw_user_meta_data||'{\"role\":\"admin\"}' where id=$1",[ids.other]);
   assert.equal((await as('other','me')).me.role,'student');
@@ -136,7 +136,7 @@ test('migration repair preserves unsafe historical rows for review',async t=>{
  const legacyLearner='20000000-0000-0000-0000-000000000001',legacyInstructor='20000000-0000-0000-0000-000000000002';
  const {db,as,vehicle}=await database({beforeRepair:async database=>{
   for(const [id,name,role]of [[legacyLearner,'Legacy learner','student'],[legacyInstructor,'Legacy instructor','instructor']]){
-   await database.query('insert into auth.users values($1,$2,$3)',[id,name+'@example.test',JSON.stringify({name,role})]);
+   await database.query('insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)',[id,name+'@example.test',JSON.stringify({name,role})]);
    await database.query("insert into drivex_private.profiles(id,name,role,approval_status) values($1,$2,$3,'approved')",[id,name,role]);
   }
   const en=(await database.query("insert into drivex_private.enrollments(learner_id,plan_id,instructor_id,credits_total,status) values($1,'plan_10_day',$2,10,'active') returning id",[legacyLearner,legacyInstructor])).rows[0].id;

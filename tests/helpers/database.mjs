@@ -5,7 +5,7 @@ export const ids={admin:'00000000-0000-0000-0000-000000000001',instructor:'00000
 export async function database({beforeRepair}={}) {
  const db=new PGlite({extensions:{btree_gist}});
  await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;
- create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb);
+ create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb,email_confirmed_at timestamptz default now());
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;`);
  const directory=new URL('../../supabase/migrations/',import.meta.url);
@@ -14,7 +14,7 @@ export async function database({beforeRepair}={}) {
   if(name==='20261107000100_product_completion.sql'&&beforeRepair)await beforeRepair(db);
   await db.exec(await readFile(new URL(name,directory),'utf8'));
  }
- for(const [name,id]of Object.entries(ids))await db.query('insert into auth.users values($1,$2,$3)',[id,name+'@example.test',JSON.stringify({name,phone:'test-only',role:name.startsWith('instructor')||name==='pending'?'instructor':'student'})]);
+ for(const [name,id]of Object.entries(ids))await db.query('insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)',[id,name+'@example.test',JSON.stringify({name,phone:'test-only',role:name.startsWith('instructor')||name==='pending'?'instructor':'student'})]);
  await db.query("update drivex_private.profiles set role='admin' where id=$1",[ids.admin]);
  await db.query("update drivex_private.profiles set approval_status='approved' where id in ($1,$2)",[ids.instructor,ids.instructor2]);
  async function as(user,action,payload={}) {
