@@ -1,6 +1,6 @@
 # DriveX release procedure
 
-The source changes are not a live deployment. Do not publish the new frontend against the old dispatcher. Restore backend access, establish the actual migration history, apply the new backend, configure/test payments, and then release the frontend.
+The source changes are not a live deployment. Do not publish the new frontend against the old dispatcher. Restore backend access, establish the actual migration history, apply the new backend, configure/test payments and notifications, and then release the frontend. [ADDITIONAL_ABILITIES.md](ADDITIONAL_ABILITIES.md) covers teaching schedules, email/cron setup and offline installation.
 
 ## Current external blockers
 
@@ -52,7 +52,7 @@ Open `http://127.0.0.1:3100`. Test-only accounts are `student@example.test`, `in
 - Set Supabase Auth Site URL to the real Render URL. Add only the required production and local callback URLs. Keep email confirmation enabled, configure SMTP and check the project's signup/reset rate limits.
 - Create and confirm the owner account and use `backend/bootstrap-admin.sql` with the actual owner Auth UUID. Do not use signup metadata to grant admin access.
 - Exercise signup, confirmation, login, refresh, password reset, new password and sign-out. Test an instructor account before and after administrator approval.
-- Anonymous Supabase sign-in is not used by this application. Review CAPTCHA/rate-limit settings before public launch.
+- Anonymous Supabase sign-in is not used by this application. Review rate limits before public launch. CAPTCHA is not integrated with the current signup form; do not enable it without adding its client widget/token flow first.
 
 ## Razorpay test deployment
 
@@ -91,4 +91,4 @@ Server-created orders and provider capture state follow the [Razorpay integratio
 
 Render serves `dist/` using `render.yaml`. Set only `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` for the static build. The build validates the public configuration; no service-role or provider secrets belong in Render's frontend environment.
 
-After backend deployment and hosted acceptance, run the local checks once more and publish the reviewed GitHub changes. Keep the push on hold while any mandatory release check remains incomplete. Then assess the actual Render deployment; a successful GitHub push alone is not release evidence.
+After backend deployment and hosted acceptance, run the local checks once more and publish the reviewed GitHub changes. Keep the push on hold while any mandatory release check remains incomplete. Then assess the actual Render deployment; a successful GitHub push alone is not release evidence. Include a real weekly-hours/blocked-date exercise, controlled email deliveries with cron/retry checks, and installation/offline tests on phone and desktop before lifting the release hold.

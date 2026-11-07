@@ -36,7 +36,7 @@ An enrollment snapshots the server plan's credits and payment amount. Plan names
 
 New lessons are immediately reserved against the paid plan. Reserved credits are counted separately from consumed credits so a learner cannot book more lessons than they can complete. Lesson completion consumes a credit exactly once. All reservation/completion operations lock enrollment before booking/payment rows where applicable. Existing GiST exclusion constraints prevent instructor, learner and vehicle time overlaps. Legacy pending lesson holds retain their 30-minute expiration.
 
-Lesson slots are one hour at 08:00, 09:00, 10:00, 11:00, 14:00, 15:00, 16:00 or 17:00, India Standard Time, within 90 days. The enrolled approved instructor is selected by the server. Only active vehicles can receive new bookings. Completed bookings require a 1–10 score and 1–1,500 characters of notes.
+Lessons are one hour within 90 days, in India Standard Time. Default teaching windows preserve the previous 08:00–12:00 and 14:00–18:00 daily offering. Approved instructors and admins can replace weekly windows or block dates; half-hour boundaries are supported. The same schedule generates availability and authorizes reservation, and schedule edits cannot invalidate existing reserved lessons. The enrolled approved instructor is selected by the server. Only active vehicles can receive new bookings. Completed bookings require a 1–10 score and 1–1,500 characters of notes.
 
 Theory/practical completion is stored per learner and curriculum item. Learners mark theory; only the current paid instructor can mark practical. The course has eight theory modules and five practical milestones. Admins supply reviewed HTTPS YouTube video links; none are invented by the client.
 
@@ -58,3 +58,11 @@ No previously applied migration is edited. `20261107000100_product_completion.sq
 Local tests execute every migration in PGlite, including a populated upgrade fixture, and exercise real dispatcher authorization and credit/payment lifecycles. The HTTP integration test executes the actual API client, payment handlers and database through a local test server; Auth/provider responses are isolated fixtures. Client tests cover escaping, public config validation, payment polling/retries, blocked session storage, session refresh, recovery callbacks and API errors. Syntax checks cover every JavaScript module in the application, tests and shared Edge handlers. CI also scans source and Git history for credential patterns without printing values.
 
 Hosted release remains NOT VERIFIED: Supabase restoration was rejected by the organization's free-project limit; Render had no selected workspace; browser visual QA stopped on a URL-identification error. The GitHub push is withheld until completion. Do not describe local test success as a completed hosted product.
+
+## Additional abilities
+
+The follow-on availability, notification and scheduler migrations preserve the earlier migration files. Private dispatch wrappers delegate existing actions to owner-only prior implementations; revoked browser execute privileges prevent bypassing the new reservation rules. New scheduling tables retain RLS and no direct browser grants.
+
+Booking/refund triggers queue transactional notices. A service-only notification RPC leases work and records sanitized delivery outcomes. The Edge worker checks a dedicated scheduler token, uses server-only Resend credentials and retries with stable provider idempotency keys. Conditional pg_cron/pg_net installation and Vault-backed invocation support hosted scheduling; real extension execution and deliverability still require acceptance checks.
+
+The role views are split into learner/instructor/admin modules. A public offline shell, manifest and icons support PWA installation without caching account pages, configuration or API data. [The additional-abilities guide](docs/ADDITIONAL_ABILITIES.md) documents behavior, configuration and limits.

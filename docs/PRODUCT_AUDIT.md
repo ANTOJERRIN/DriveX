@@ -1,6 +1,6 @@
 # DriveX product audit
 
-Scope: the latest `prompts/v2/B0..B8` pack, with `prompts resources/new` as its duplicate. The older resource pack explicitly lists notifications, custom working hours and PWA as later work. The existing Supabase, vanilla JavaScript and Render architecture is retained; no Higgsfield-hosted copy is created.
+Scope: the latest `prompts/v2/B0..B8` pack, with `prompts resources/new` as its duplicate. The user subsequently requested the remaining abilities from `prompts resources/04..06`: notifications, custom working hours and PWA. Those features are now implemented locally. The existing Supabase, vanilla JavaScript and Render architecture is retained; no Higgsfield-hosted copy is created.
 
 ## Inventory and changes
 
@@ -22,6 +22,9 @@ Scope: the latest `prompts/v2/B0..B8` pack, with `prompts resources/new` as its 
 | Real inventory | Three fictitious seeded vehicles plus browser-added sample instructors | Browser samples removed; exact seeded fleet entries deactivated for school review, records preserved |
 | Hosting/config | Render config existed; arbitrary key strings could pass validation | Shared public-key validation, complete module syntax checks, stricter script CSP, explicit Edge Function JWT configuration |
 | Tests | 18 entries passed, including tests allowing payment/role bypass | Full migration chain, upgrade fixture, role isolation, real overlap rejection, credit lifecycle, webhook/HTTP handlers and client/presentation tests |
+| Teaching availability | Eight fixed daily slots | Instructor/admin weekly windows, half-hour starts and blocked dates; edits cannot invalidate reserved lessons |
+| Email notices | No queue or sender | Transactional queue, service-only worker, bounded retries, reminders and conditional cron/Vault wiring; provider setup and live delivery still required |
+| PWA/offline | No install/offline shell | Manifest, icons, public offline page, install affordance and cache exclusion for private records, config and APIs |
 
 ## Screen map
 
@@ -31,10 +34,10 @@ Landing → Learner / Instructor door → Sign in / Create account / Password re
     Overview · Plans · Book a lesson · My lessons · Learning & progress · Payments
   Server role: instructor
     Pending/rejected → status screen and sign out
-    Approved → Overview · My learners · My schedule · Plan collections
+    Approved → Overview · My learners · My schedule · Teaching hours · Plan collections
   Server role: admin
     Overview · Instructor approvals · All bookings · Training fleet
-    Payments & receipts · Theory resources
+    Teaching hours · Payments & receipts · School emails · Theory resources
 ```
 
 ## Product boundaries
@@ -46,7 +49,8 @@ Landing → Learner / Instructor door → Sign in / Create account / Password re
 - Full refund recording requires an unused paid plan and no reserved lessons. This records money already returned by staff; it does not initiate a provider refund. Partial refunds and instructor salary/payout processing are outside this release.
 - Instructor collections mean school payments attributed to the instructor's plans, not money paid out to an instructor.
 - Theory lessons ship without invented video URLs. An admin supplies reviewed YouTube videos.
-- Email reminders, custom weekly instructor hours/blocked dates, installable PWA/offline shell and CAPTCHA integration remain optional follow-up work from the older pack. They are not represented as implemented.
+- Weekly hours, blocked dates, queued email/reminders and the installable/offline shell are included in the current source. See `ADDITIONAL_ABILITIES.md` for their behavior, setup and remaining hosted acceptance.
+- CAPTCHA remains a separate future client integration; it is not implemented and must not be enabled without its client token flow. Production SMTP/rate limits, backups and operational monitoring remain environment-level launch tasks; no provider credentials or live delivery configuration are invented.
 
 ## Release status
 

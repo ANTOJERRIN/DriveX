@@ -47,7 +47,7 @@ Snapshot:
 
 Dashboard `next_confirmed_lesson` is null or `{id,date,time,instructor_name}` for the earliest future confirmed lesson. `recent_lessons` contains up to five own bookings with `id,starts_at,ends_at,status,score,notes,instructor_name`, newest scheduled time first. Curriculum percentage counts watched theory plus marked practical items out of all course items. Reserved credits remain in `credits_remaining` until completion but cannot be reserved a second time.
 
-All new lessons are one hour, at 08:00, 09:00, 10:00, 11:00, 14:00, 15:00, 16:00 or 17:00 IST. An enrollment is locked before counting reservations. GiST exclusion constraints are the final guard against learner, instructor and vehicle overlap. Expired legacy pending holds are released before snapshot/availability/reserve.
+All new lessons are one hour, within the enrolled instructor's weekly hours in IST. Defaults produce 08:00, 09:00, 10:00, 11:00, 14:00, 15:00, 16:00 or 17:00; edited windows may start on half-hours. Closed weekdays return no slots and blocked dates produce a specific validation error. An enrollment is locked before counting reservations. GiST exclusion constraints remain the final guard against learner, instructor and vehicle overlap. Expired legacy pending holds are released before snapshot/availability/reserve.
 
 ## Instructor actions
 
@@ -121,3 +121,32 @@ Processing compares exact stored order and amount, rejects reused event IDs with
 | Network failure | Client reports that the server could not be reached; it does not supply sample domain data |
 
 Retired browser actions `set_my_role`, `pay_enrollment`, `confirm_payment` and `confirm_online_payment` always raise `42501`. Other unrecognized actions raise an unknown-action error. Application authorization does not depend on a client role selector or mutable metadata after initial profile creation.
+
+## Additional scheduling and notification actions
+
+These actions use the same authenticated `public.drivex` entry point. The prior private dispatchers are owner-only and cannot be called by browser roles to bypass the added rules.
+
+| Action | Roles | Payload | Response / rules |
+| --- | --- | --- | --- |
+| `working_hours` | Approved instructor for self; admin | `{instructor_id}` for admin, `{}` for instructor | `{instructor_id,hours:[{weekday:0,start:"08:00",end:"12:00"}],blocked_dates:[{date,reason}]}`; Sunday=0; private blocked-date notes are never returned to learners |
+| `set_working_hours` | Approved instructor for self; admin | `{instructor_id?,hours:[{weekday,start,end}]}` | Same schedule response. Replaces the week transactionally, up to 28 windows; empty array closes the week. Half-hour boundaries, windows at least one hour, no overlaps. Rejects edits conflicting with existing reserved lessons |
+| `set_blocked_date` | Approved instructor for self; admin | `{instructor_id?,date,blocked:true,reason?}` | Same schedule response. Date must be within the next year; note at most 200 characters. `blocked:false` removes the date. Cannot block a date with an unresolved reserved lesson |
+| `notification_status` | Admin | `{}` | `{counts:{pending,due,sent,failed,processing},scheduler:{installed,worker_configured},jobs:[{id,event,status,attempts,next_attempt_at,created_at,last_error}]}`; last 30 jobs; no recipient addresses or delivery bodies |
+| `retry_notification` | Admin | `{id}` | `{id,status:"pending"}`; explicit reset for a failed job; changed-recipient failures require reconciliation and cannot be retried this way |
+
+New instructor profiles receive the default seven-day teaching week. Blocked dates cause a specific validation error for learner availability/reservation. A closed weekday returns `[]`. Schedule changes and reservations coordinate through a lock on the instructor profile; existing booking exclusion constraints are retained.
+
+### Notification service endpoint
+
+`POST /functions/v1/notification-worker` is a machine endpoint, with gateway JWT verification disabled and a dedicated `Authorization: Bearer <worker-token>` check inside the function. Tokens must be at least 32 characters and match the server's `NOTIFICATION_WORKER_TOKEN`. The request body does not supply recipients or messages. Missing/wrong caller credentials return 401; incomplete server delivery configuration returns 503 before claiming work. Success returns aggregate `{processed,sent,retried,failed}` counts, never addresses, message text or provider error bodies.
+
+The worker uses only this service-only RPC:
+
+| RPC | Caller | Arguments | Response |
+| --- | --- | --- | --- |
+| `drivex_notification_jobs` | `service_role` only | `action:"claim",payload:{}` | At most ten `{id,claim_token,delivery}` items; five-minute lease; attempts increment on claim |
+| `drivex_notification_jobs` | `service_role` only | `action:"finish",payload:{id,claim_token,success,provider_id?,error?,permanent?}` | `{status:"sent"|"pending"|"dead"|"stale"}`; only the current lease can acknowledge; success requires provider receipt |
+
+Private delivery data includes recipient email/name, event and the lesson/refund fields needed for deterministic plain-text rendering. It is cleared after provider acceptance. `sent` means provider accepted, not proven inbox delivery. Last-error values are sanitized categories. Failed sends back off exponentially and stop automatically after five attempts; an abandoned fifth lease also becomes dead. Stale/cancelled/completed lessons are suppressed before delivery, and pending reminders are cancelled when a lesson is cancelled, completed or moved.
+
+`booking_confirmed` and `booking_cancelled` target the learner/instructor; `refund_recorded` targets the learner; `lesson_reminder` targets learner/instructor about 24 hours before start. A late-booking/catch-up policy, provider idempotency limits, cron/Vault setup and hosted acceptance requirements are documented in [docs/ADDITIONAL_ABILITIES.md](docs/ADDITIONAL_ABILITIES.md).
