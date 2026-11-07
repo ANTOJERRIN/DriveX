@@ -6,7 +6,7 @@ Learners buy the 10-Day plan (INR 1,500 / 10 credits) or Monthly plan (INR 4,000
 
 ## Release status
 
-The local changes are **not a live release**. The dedicated Supabase project `gakrpgdwvtfvfbvtbofu` reported inactive; restoration was rejected because the organization reached its free-project limit. No database migration, Edge Function deployment or Render deployment was performed in this work. The GitHub push is on hold at the user's request until completion.
+The local changes are **not a live release**. The dedicated Supabase project `gakrpgdwvtfvfbvtbofu` reported inactive; restoration was rejected because the organization reached its free-project limit. No database migration, Edge Function deployment or Render deployment was performed in this work. The user has authorized publishing the release branch to GitHub. Hosted deployment remains on hold pending environment setup and acceptance checks.
 
 Hosted Auth/SMTP, actual Razorpay test payments, email delivery/cron, production migration history, browser/mobile appearance and concurrent sessions against hosted Postgres are **NOT VERIFIED**. See [the product audit](docs/PRODUCT_AUDIT.md) for the inventory and [the release procedure](docs/RELEASE.md) for remaining steps. The additional requested abilities—editable instructor hours, transactional email and the installable/offline shell—are implemented locally; [their setup guide](docs/ADDITIONAL_ABILITIES.md) lists the hosted checks.
 

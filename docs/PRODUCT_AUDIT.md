@@ -58,4 +58,4 @@ NOT VERIFIED in the hosted environment. The connected Supabase project reported 
 
 The local fixture in `tests/browser-server.mjs` serves real application files and uses the real dispatcher in PGlite, with test-only Auth responses. `tests/integration.test.mjs` runs the actual client over local HTTP through the actual payment handlers and dispatcher, replacing only Auth/provider services. It covers purchase, signed/replayed payment events, booking, completion and practical progress. It does not prove Supabase Auth, SMTP, Razorpay, browser rendering or cross-session database locking.
 
-The GitHub push is withheld at the user's request until the work and release checks are finished. See `RELEASE.md` for the remaining environment steps.
+The user has authorized GitHub branch publication. Hosted deployment remains gated by environment setup and acceptance checks. See `RELEASE.md` for the remaining environment steps.

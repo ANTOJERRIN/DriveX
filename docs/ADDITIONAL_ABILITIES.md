@@ -1,6 +1,6 @@
 # Scheduling, notifications and installable app
 
-This continuation implements the three remaining abilities in `prompts resources/04-notifications.md`, `05-availability.md` and `06-ui-pwa.md`. Changes are local and are not a hosted release. The GitHub push remains on hold.
+This continuation implements the three remaining abilities in `prompts resources/04-notifications.md`, `05-availability.md` and `06-ui-pwa.md`. Changes are local and are not a hosted release. The user has authorized publishing the release branch; hosted deployment remains on hold.
 
 ## Instructor availability
 

@@ -57,7 +57,7 @@ No previously applied migration is edited. `20261107000100_product_completion.sq
 
 Local tests execute every migration in PGlite, including a populated upgrade fixture, and exercise real dispatcher authorization and credit/payment lifecycles. The HTTP integration test executes the actual API client, payment handlers and database through a local test server; Auth/provider responses are isolated fixtures. Client tests cover escaping, public config validation, payment polling/retries, blocked session storage, session refresh, recovery callbacks and API errors. Syntax checks cover every JavaScript module in the application, tests and shared Edge handlers. CI also scans source and Git history for credential patterns without printing values.
 
-Hosted release remains NOT VERIFIED: Supabase restoration was rejected by the organization's free-project limit; Render had no selected workspace; browser visual QA stopped on a URL-identification error. The GitHub push is withheld until completion. Do not describe local test success as a completed hosted product.
+Hosted release remains NOT VERIFIED: Supabase restoration was rejected by the organization's free-project limit; Render had no selected workspace; browser visual QA stopped on a URL-identification error. The user has authorized GitHub branch publication; hosted deployment remains gated by the outstanding checks. Do not describe local test success as a completed hosted product.
 
 ## Additional abilities
 

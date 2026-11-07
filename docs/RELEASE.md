@@ -8,7 +8,7 @@ The source changes are not a live deployment. Do not publish the new frontend ag
 - Supabase CLI and Deno were not available in this workspace. Local migration and Edge-handler tests use PGlite and Node; they do not prove hosted deployment.
 - Render MCP had no workspace selected, so no hosting settings were changed.
 - Browser visual/mobile checks are NOT VERIFIED: Computer Use could not confidently identify the browser URL and stopped.
-- GitHub publication is on hold until completion, per the user's latest instruction.
+- GitHub branch publication is authorized by the user's latest instruction; production deployment remains gated by the hosted checks.
 
 ## Local checks
 
@@ -91,4 +91,4 @@ Server-created orders and provider capture state follow the [Razorpay integratio
 
 Render serves `dist/` using `render.yaml`. Set only `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` for the static build. The build validates the public configuration; no service-role or provider secrets belong in Render's frontend environment.
 
-After backend deployment and hosted acceptance, run the local checks once more and publish the reviewed GitHub changes. Keep the push on hold while any mandatory release check remains incomplete. Then assess the actual Render deployment; a successful GitHub push alone is not release evidence. Include a real weekly-hours/blocked-date exercise, controlled email deliveries with cron/retry checks, and installation/offline tests on phone and desktop before lifting the release hold.
+The reviewed release branch may be published to GitHub under the current authorization. Keep production deployment on hold while mandatory release checks remain incomplete. After backend deployment and hosted acceptance, assess the actual Render deployment; a successful GitHub push alone is not release evidence. Include a real weekly-hours/blocked-date exercise, controlled email deliveries with cron/retry checks, and installation/offline tests on phone and desktop before lifting the release hold.
