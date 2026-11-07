@@ -1,6 +1,6 @@
 // Shared cryptographic verification for Razorpay Webhooks (Node & Deno compatible)
 export async function verifyWebhookSignature(rawBody, signature, secret) {
-  if (!signature || !secret) return false;
+  if (!secret || !/^[a-f0-9]{64}$/i.test(signature || '')) return false;
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -19,5 +19,7 @@ export async function verifyWebhookSignature(rawBody, signature, secret) {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
-  return expectedSignature.toLowerCase() === signature.toLowerCase();
+  let difference = 0;
+  for (let i = 0; i < 64; i++) difference |= expectedSignature.charCodeAt(i) ^ signature.toLowerCase().charCodeAt(i);
+  return difference === 0;
 }

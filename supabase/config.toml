@@ -19,7 +19,7 @@ port = 54323
 [auth]
 enabled = true
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://localhost:3000"]
+additional_redirect_urls = ["http://localhost:3000", "http://127.0.0.1:3000"]
 jwt_expiry = 3600
 enable_signup = true
 
@@ -30,3 +30,9 @@ enable_confirmations = true
 
 [storage]
 enabled = false
+
+[functions.create-order]
+verify_jwt = true
+
+[functions.razorpay-webhook]
+verify_jwt = false
