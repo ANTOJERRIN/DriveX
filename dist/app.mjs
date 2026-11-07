@@ -1,16 +1,22 @@
+import {learnerOverview,plansView,bookView} from './portals/learner.mjs';
+import {instructorOverview,learnersView} from './portals/instructor.mjs';
+import {instructorsView,fleetView,adminOverview} from './portals/admin.mjs';
+import {availabilityView,notificationsView,parseWorkingHours} from './scheduling.mjs';
+import {registerPwa} from './pwa.mjs';
 import { configured,signedIn,login,signup,logout,recover,changePassword,handleCallback,getCallbackError,rpc,invokeFunction } from './api.mjs';
-import { esc,money,today,date,badge,intro,empty,stat,progress,progressBar,navigation,bookingsView,paymentsView,syllabusView } from './presentation.mjs';
+import { esc,money,today,intro,navigation,bookingsView,paymentsView,syllabusView } from './presentation.mjs';
 import { checkout } from './checkout.mjs';
 const $=s=>document.querySelector(s);
 let state=null, page='overview', filter='all', door='student', busy=false, course=[], payments=[], learners=[], metrics={}, times=[], slotError='', loadingSlots=false, slotRequest=0;
 let draft={date:today(),time:'',vehicle:''};
+let hours=null,notices=null,selectedInstructor='';
 const recovery=handleCallback();
 const role=()=>state?.me?.role;
 const brand='<div class="brand"><div class="brandmark">D</div>Drive<span>X</span></div>';
 function toast(message) { const t=$('#toast');t.textContent=message;t.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.style.display='none',7000); }
 function modal(title,body) { const m=$('#modal');m.innerHTML=`<div class="modal-top"><h2 id="modal-title">${esc(title)}</h2><button class="close" aria-label="Close dialog">×</button></div>${body}`;m.querySelector('.close').onclick=()=>m.close();if(!m.open)m.showModal(); }
 function errorMessage(error) { return error?.message||'Unable to complete this action. Please try again.'; }
-function clearState() {state=null;course=[];payments=[];learners=[];metrics={};times=[];draft={date:today(),time:'',vehicle:''};page='overview';slotRequest++;}
+function clearState() {state=null;course=[];payments=[];learners=[];metrics={};times=[];hours=null;notices=null;selectedInstructor='';draft={date:today(),time:'',vehicle:''};page='overview';slotRequest++;}
 async function signOut() { try {await logout();} catch {} finally {clearState();$('#modal').close();auth();} }
 function unavailable(error) {
   clearState();$('#app').innerHTML=`<main class="auth-panel"><section class="panel panel-pad">${brand}${intro('Unable to load DriveX',errorMessage(error))}<button class="primary" id="retry">Try again</button> <button class="secondary" id="logout">Sign out</button></section></main>`;
@@ -27,6 +33,11 @@ async function reload() {
     if(next.me.role==='admin') [nextCourse,nextPayments,nextMetrics]=await Promise.all([rpc('admin_lessons'),rpc('my_payments'),rpc('admin_overview')]);
   }
   state=next;course=nextCourse||[];payments=nextPayments||[];learners=nextLearners||[];metrics=nextMetrics||{};
+  if(!pending&&role()==='instructor')hours=await rpc('working_hours');
+  if(role()==='admin'){
+    if(!state.instructors.some(i=>i.id===selectedInstructor))selectedInstructor=state.instructors[0]?.id||'';
+    [hours,notices]=await Promise.all([selectedInstructor?rpc('working_hours',{instructor_id:selectedInstructor}):Promise.resolve(null),rpc('notification_status')]);
+  }
   if(!state.vehicles?.some(v=>v.id===draft.vehicle&&v.active)) draft.vehicle=state.vehicles?.find(v=>v.active)?.id||'';
   if(!navigation[role()].some(([p])=>p===page))page='overview';
   render();
@@ -50,37 +61,21 @@ function auth(mode='login',message='') {
     }catch(error){$('#auth-error').textContent=errorMessage(error);button.disabled=false;}
   };
 }
-function learnerOverview() {
- const en=state.active_enrollment, p=progress(course),next=state.bookings.filter(b=>b.status==='confirmed'&&new Date(b.starts_at)>new Date()).sort((a,b)=>a.starts_at.localeCompare(b.starts_at))[0];
- return `${intro('Welcome, '+state.me.name,'Every lesson brings you closer to confident driving.')}<div class="stats">${stat('Lessons left',en?.credits_remaining||0)}${stat('Reserved lessons',metrics.confirmed_count||0)}${stat('Completed lessons',metrics.completed_count||0)}${stat('Learning progress',p.total+'%')}</div><div class="grid section-gap"><section class="panel panel-pad lesson-hero"><div class="eyebrow">NEXT LESSON</div>${next?`<h2>${date(next.date)} · ${esc(next.time)} IST</h2><p>${esc(next.instructor_name)} · ${esc(next.vehicle_name)}</p>`:'<h2>Your next step starts here.</h2><p>Choose a plan, then reserve a lesson with your instructor.</p>'}<button class="primary lime section-gap" data-nav="${en?'book':'plans'}">${en?'Book a lesson':'Choose a plan'} →</button></section><section class="panel panel-pad"><h2>Your learning journey</h2>${progressBar('Theory',p.theory)}${progressBar('Practical',p.practical)}<button class="link" data-nav="syllabus">Explore your syllabus →</button></section></div>${en?.review_required?'<p class="banner-alert">Your previous plan activation needs receipt review. Contact the school before booking.</p>':''}<section class="section-gap"><h2>Recent lessons</h2>${bookingsView(state.bookings.slice(0,3),'student')}</section>`;
-}
-function plansView() {
- const en=state.active_enrollment;
- return `${intro('A plan for your journey','One credit is used when your instructor completes a lesson.')} ${en?`<section class="plan-active-badge"><h2>${esc(en.plan_name)}</h2><p>${en.credits_remaining} lessons left · ${en.credits_reserved} reserved · ${esc(en.instructor_name)}</p></section>`:''}<div class="plan-cards-grid section-gap">${state.plans.map((p,i)=>`<section class="plan-card ${i===1?'highlight':''}"><div class="eyebrow">${p.lesson_credits} GUIDED LESSONS</div><h2>${esc(p.name)}</h2><div class="price"><b>${money(p.price_inr)}</b></div><ul class="plan-features"><li>${p.lesson_credits} practical lesson credits</li><li>One hour of guided practice per lesson</li><li>Theory resources and progress tracking</li><li>Your chosen school instructor</li></ul><button class="primary full" data-enroll="${esc(p.id)}" ${en?'disabled':''}>Choose plan</button></section>`).join('')}</div>${!state.instructors.length?'<p class="hint">No approved instructors yet. Contact the school before purchasing.</p>':''}`;
-}
-function bookView() {
- const en=state.active_enrollment;
- if(!en)return intro('Book a lesson','Choose a plan to begin.')+empty('Buy a plan to book','Your plan must be paid before booking.')+'<button class="primary" data-nav="plans">View plans</button>';
- const vehicles=state.vehicles.filter(v=>v.active);
- return `${intro('Book a lesson',`${en.credits_remaining} lessons left · ${en.credits_reserved} already reserved · ${en.instructor_name}`)}<div class="grid"><section class="panel panel-pad booking-form"><label>Lesson date<input id="lesson-date" type="date" min="${today()}" value="${esc(draft.date)}" required></label><label>Training vehicle<select id="vehicle">${vehicles.map(v=>`<option value="${esc(v.id)}" ${v.id===draft.vehicle?'selected':''}>${esc(v.name)} · ${esc(v.transmission)}</option>`).join('')}</select></label><h2>One-hour slots · IST</h2>${!vehicles.length?empty('No active training vehicles','Contact the school to arrange a vehicle.'):loadingSlots?'<p role="status">Loading availability…</p>':slotError?`<p class="error" role="alert">${esc(slotError)}</p><button class="secondary" id="slots-retry">Retry availability</button>`:`<div class="slots">${times.map(t=>`<button class="slot ${draft.time===t.time?'selected':''}" data-time="${esc(t.time)}" aria-pressed="${draft.time===t.time}" ${t.available?'':'disabled'}>${esc(t.time)}</button>`).join('')}</div>`}</section><section class="panel panel-pad"><h2>Your lesson</h2><p class="summary-line">${date(draft.date)} · ${esc(draft.time||'Choose a time')}</p><p class="sub">Credits are used after completion. You can cancel before the lesson starts.</p><button class="primary full section-gap" id="reserve" ${draft.time&&!loadingSlots&&!busy?'':'disabled'}>Reserve lesson</button></section></div>`;
-}
-function instructorOverview() { return `${intro('Welcome, '+state.me.name,'Your learners, lessons and school plan collections.')}<div class="stats">${stat('Active learners',metrics.learners_count||0)}${stat("Today's lessons",metrics.today_lessons||0)}${stat('Upcoming lessons',metrics.upcoming_lessons||0)}${stat('Plan collections',money(metrics.total_earnings))}</div><section class="section-gap"><h2>Teaching schedule</h2>${bookingsView(state.bookings,'instructor',filter)}</section>`; }
-function learnersView(){return `${intro('My learners','Review progress and mark practical skills after teaching them.')}<div class="cards">${learners.map(l=>{const p=progress(l.lessons);return `<section class="panel panel-pad"><h2>${esc(l.learner_name)}</h2><p>${esc(l.phone)} · ${esc(l.plan_name)}</p><p>${l.credits_remaining}/${l.credits_total} credits left</p>${progressBar('Theory',p.theory)}${progressBar('Practical',p.practical)}${l.lessons.filter(x=>x.kind==='practical').map(x=>`<div class="syllabus-item"><span>${esc(x.title)}</span>${x.completed?badge('completed'):`<button class="secondary" data-practical="${esc(x.id)}" data-learner="${esc(l.learner_id)}">Mark done</button>`}</div>`).join('')}</section>`;}).join('')||empty('No learners yet','Paid learners assigned to you will appear here.')}</div>`;}
-function instructorsView(){return `${intro('Instructor approvals','Review each instructor before they accept learners.')}<button class="primary" id="add-instructor">Assign instructor by email</button><section class="panel panel-pad">${state.instructors.map(i=>`<div class="syllabus-item"><div><b>${esc(i.name)}</b><p>${esc(i.phone)} · ${esc(i.specialty)}</p>${badge(i.approval_status)}</div><div>${i.approval_status!=='approved'?`<button class="primary" data-instructor="${esc(i.id)}" data-status="approved">Approve</button>`:''}${i.approval_status!=='rejected'?`<button class="danger" data-instructor="${esc(i.id)}" data-status="rejected">Reject</button>`:''}</div></div>`).join('')||empty('No instructor applications yet')}</section>`;}
-function fleetView(){return `${intro('Training fleet','Only active vehicles are offered for booking.')}<button class="primary" id="add-vehicle">Add vehicle</button><section class="panel panel-pad section-gap">${state.vehicles.map(v=>`<div class="syllabus-item"><div><b>${esc(v.name)}</b><p>${esc(v.reg)} · ${esc(v.transmission)}</p>${badge(v.active?'active':'inactive')}</div><button class="secondary" data-vehicle="${esc(v.id)}" data-active="${!v.active}">${v.active?'Deactivate':'Activate'}</button></div>`).join('')||empty('No vehicles yet')}</section>`;}
 function render() {
  if(!state)return;
  const r=role(), pending=r==='instructor'&&state.me.approval_status!=='approved';
  let body;
  if(pending)body=`${intro(state.me.approval_status==='rejected'?'Application needs attention':'Waiting for admin approval',state.me.approval_status==='rejected'?'Contact the school to discuss your application.':'Your account will be reviewed before you can accept learners.')}<button class="secondary" id="refresh">Refresh status</button>`;
+ else if(page==='availability')body=availabilityView({state,hours,selectedInstructor});
+ else if(page==='notifications')body=notificationsView(notices);
  else if(page==='lessons')body=intro(r==='student'?'My lessons':r==='admin'?'All bookings':'My schedule','All lesson times are in India Standard Time.')+bookingsView(state.bookings,r,filter);
  else if(page==='payments'||page==='earnings')body=intro(r==='instructor'?'Plan collections':'Payments',r==='admin'?'Record actual school receipts and completed refunds.':'Your plan payment history.')+paymentsView(payments,r)+'<button class="secondary section-gap" id="refresh">Refresh status</button>';
  else if(page==='syllabus')body=intro(r==='admin'?'Theory resources':'Learning & progress',r==='admin'?'Add school-reviewed YouTube videos to the syllabus.':'Theory is marked by you. Practical progress is marked by your instructor.')+syllabusView(course,r==='admin');
- else if(r==='student')body=page==='plans'?plansView():page==='book'?bookView():learnerOverview();
- else if(r==='instructor')body=page==='learners'?learnersView():instructorOverview();
- else if(page==='instructors')body=instructorsView();
- else if(page==='fleet')body=fleetView();
- else body=`${intro('School overview','Manage the people and resources behind every lesson.')}<div class="stats">${stat('Learners',metrics.total_learners||0)}${stat('Pending instructors',metrics.pending_instructors||0)}${stat('Active plans',metrics.active_enrollments||0)}${stat('Receipts to review',metrics.review_payments||0)}</div><section class="panel panel-pad section-gap"><h2>School operations</h2><p class="sub">Review instructor applications, add real training vehicles, and reconcile payments before learners book.</p><div class="grid-buttons section-gap"><button class="secondary" data-nav="instructors">Review instructors</button><button class="secondary" data-nav="fleet">Manage fleet</button><button class="secondary" data-nav="payments">Review payments</button></div></section>`;
+ else if(r==='student')body=page==='plans'?plansView({state}):page==='book'?bookView({state,draft,times,slotError,loadingSlots,busy}):learnerOverview({state,course,metrics});
+ else if(r==='instructor')body=page==='learners'?learnersView({learners}):instructorOverview({state,metrics,filter});
+ else if(page==='instructors')body=instructorsView({state});
+ else if(page==='fleet')body=fleetView({state});
+ else body=adminOverview({metrics});
  $('#app').innerHTML=`<a class="skip-link" href="#main-content">Skip to content</a><div class="shell"><aside class="side">${brand}<small>${esc(r==='student'?'Learner':r)} portal</small>${!pending?`<nav class="nav" aria-label="Main navigation">${navigation[r].map(([p,label])=>`<button data-nav="${p}" class="${page===p?'active':''}" ${page===p?'aria-current="page"':''}>${label}</button>`).join('')}</nav>`:''}<div class="side-bottom"><p>${esc(state.me.name)}</p><button class="link" id="logout">Sign out</button></div></aside><main class="content" id="main-content">${body}<footer class="footer">DriveX · Guided learning, confident driving</footer></main></div>`;
  bind();
 }
@@ -112,6 +107,17 @@ function bind() {
  document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navigate(b.dataset.nav));
  document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;render();});
  if($('#refresh'))$('#refresh').onclick=async()=>{try{await reload();}catch(error){unavailable(error);}};
+ if($('#hours-instructor'))$('#hours-instructor').onchange=async event=>{selectedInstructor=event.target.value;try{await reload();}catch(error){toast(errorMessage(error));}};
+ const scheduleChange=async(action,payload,errorSelector)=>{
+  if(busy)return;busy=true;const form=action==='set_working_hours'?$('#hours-form'):$('#block-date-form'),button=form?.querySelector('button');if(button)button.disabled=true;
+  try{await rpc(action,{instructor_id:hours.instructor_id,...payload});await reload();toast('Teaching availability saved.');}
+  catch(error){const field=$(errorSelector);if(field)field.textContent=errorMessage(error);else toast(errorMessage(error));}
+  finally{busy=false;if(button)button.disabled=false;}
+ };
+ if($('#hours-form'))$('#hours-form').onsubmit=event=>{event.preventDefault();try{const hours=parseWorkingHours(new FormData(event.currentTarget));scheduleChange('set_working_hours',{hours},'#hours-error');}catch(error){$('#hours-error').textContent=errorMessage(error);}};
+ if($('#block-date-form'))$('#block-date-form').onsubmit=event=>{event.preventDefault();const f=new FormData(event.currentTarget);scheduleChange('set_blocked_date',{date:f.get('date'),reason:f.get('reason'),blocked:true},'#blocked-error');};
+ document.querySelectorAll('[data-unblock]').forEach(b=>b.onclick=()=>scheduleChange('set_blocked_date',{date:b.dataset.unblock,blocked:false},'#blocked-error'));
+ document.querySelectorAll('[data-retry-notice]').forEach(b=>b.onclick=()=>perform('retry_notification',{id:b.dataset.retryNotice},'Notice queued for retry.'));
  if($('#lesson-date'))$('#lesson-date').onchange=event=>{draft.date=event.target.value;availability();};
  if($('#vehicle'))$('#vehicle').onchange=event=>{draft.vehicle=event.target.value;availability();};
  if($('#slots-retry'))$('#slots-retry').onclick=availability;
@@ -145,3 +151,4 @@ async function start() {
  try{await reload();}catch(error){unavailable(error);}
 }
 start();
+registerPwa();

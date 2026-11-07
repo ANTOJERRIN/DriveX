@@ -16,8 +16,8 @@ export function youtube(url) {
 }
 export const navigation = {
  student:[['overview','Overview'],['plans','Plans & pricing'],['book','Book a lesson'],['lessons','My lessons'],['syllabus','Learning & progress'],['payments','Payments']],
- instructor:[['overview','Overview'],['learners','My learners'],['lessons','My schedule'],['earnings','Plan collections']],
- admin:[['overview','Overview'],['instructors','Instructor approvals'],['lessons','All bookings'],['fleet','Training fleet'],['payments','Payments & receipts'],['syllabus','Theory resources']],
+ instructor:[['overview','Overview'],['learners','My learners'],['lessons','My schedule'],['availability','Teaching hours'],['earnings','Plan collections']],
+ admin:[['overview','Overview'],['instructors','Instructor approvals'],['availability','Teaching hours'],['lessons','All bookings'],['fleet','Training fleet'],['payments','Payments & receipts'],['notifications','School emails'],['syllabus','Theory resources']],
 };
 
 export function bookingsView(bookings,role,filter='all') {
