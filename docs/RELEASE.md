@@ -88,6 +88,7 @@ Server-created orders and provider capture state follow the [Razorpay integratio
 8. Check all screens on phone and desktop, keyboard focus, dialog errors, loading states, network failure, empty fleet and no approved instructors. Check the deployed CSP permits checkout without allowing inline page scripts.
 9. Open a screen URL such as `/#/payments`, sign in, refresh and use Back/Forward. Check learner links cannot open admin screens and pending instructors cannot open teaching screens. Follow a real confirmation/recovery link to check Auth fragments are consumed before screen routing.
 10. Interrupt connectivity when a session needs refreshing, reconnect and retry. Sign out during a slow workspace refresh and ensure private content disappears immediately and never reappears. Repeat with a different account; no delayed response may overwrite the new account's screen.
+11. After applying `20261108000100_learning_recommendations.sql`, check learner suggestions, Helpful and Hide controls. Repeat feedback and confirm it remains one database row per learner/lesson. Complete a theory topic, mark a practical skill as the assigned instructor, and assess a real ended lesson with a low score: suggestions should update with reasons. Cross-learner and former-instructor requests must fail. A recommendation outage must leave the core workspace available. Run `supabase/verify.sql` for the added privilege and SHA-256 checks.
 
 ## Render and publication
 

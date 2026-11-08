@@ -3,6 +3,7 @@ import {brand,workspaceView,pageTitle} from './layout.mjs';
 import {createRouter} from './router.mjs';
 import {createWorkspaceLoader} from './workspace.mjs';
 import {disableButtons} from './controls.mjs';
+import {recommendationsView} from './recommendations.mjs';
 import {learnerOverview,plansView,bookView} from './portals/learner.mjs';
 import {instructorOverview,learnersView} from './portals/instructor.mjs';
 import {instructorsView,fleetView,adminOverview} from './portals/admin.mjs';
@@ -14,7 +15,7 @@ import { checkout } from './checkout.mjs';
 const $=s=>document.querySelector(s);
 let state=null, page='overview', filter='all', door='student', busy=false, course=[], payments=[], learners=[], metrics={}, times=[], slotError='', loadingSlots=false, slotRequest=0;
 let draft={date:today(),time:'',vehicle:''};
-let hours=null,notices=null,selectedInstructor='';
+let hours=null,notices=null,selectedInstructor='',recommendations=null;
 const recovery=handleCallback();
 const role=()=>state?.me?.role;
 const router=createRouter({onChange:showPage});
@@ -22,7 +23,7 @@ const workspace=createWorkspaceLoader({rpc,onLoad:applyWorkspace});
 function toast(message) { const t=$('#toast');t.textContent=message;t.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.style.display='none',7000); }
 function modal(title,body) { const m=$('#modal');m.innerHTML=`<div class="modal-top"><h2 id="modal-title">${esc(title)}</h2><button class="close" aria-label="Close dialog">×</button></div>${body}`;m.querySelector('.close').onclick=()=>m.close();if(!m.open)m.showModal(); }
 function errorMessage(error) { return error?.message||'Unable to complete this action. Please try again.'; }
-function clearState() {workspace.invalidate();state=null;course=[];payments=[];learners=[];metrics={};times=[];hours=null;notices=null;selectedInstructor='';draft={date:today(),time:'',vehicle:''};page='overview';slotRequest++;}
+function clearState() {workspace.invalidate();state=null;course=[];payments=[];learners=[];metrics={};times=[];hours=null;notices=null;recommendations=null;selectedInstructor='';draft={date:today(),time:'',vehicle:''};page='overview';slotRequest++;}
 async function signOut() { const request=logout();router.reset();clearState();$('#modal').close();auth();try {await request;} catch {} }
 function unavailable(error) {
   clearState();$('#app').innerHTML=`<main class="auth-panel"><section class="panel panel-pad">${brand}${intro('Unable to load DriveX',errorMessage(error))}<button class="primary" id="retry">Try again</button> <button class="secondary" id="logout">Sign out</button></section></main>`;
@@ -32,7 +33,7 @@ async function reload() {
   if(await workspace.load({selectedInstructor})&&page==='book')await availability();
 }
 function applyWorkspace(next) {
-  ({state,course,payments,learners,metrics,hours,notices,selectedInstructor}=next);
+  ({state,course,payments,learners,metrics,hours,notices,selectedInstructor,recommendations}=next);
   if(!state.vehicles?.some(v=>v.id===draft.vehicle&&v.active)) draft.vehicle=state.vehicles?.find(v=>v.active)?.id||'';
   page=router.activate(role(),{pending:next.pending});
   render();
@@ -67,7 +68,7 @@ function render() {
  else if(page==='lessons')body=intro(r==='student'?'My lessons':r==='admin'?'All bookings':'My schedule','All lesson times are in India Standard Time.')+bookingsView(state.bookings,r,filter);
  else if(page==='payments'||page==='earnings')body=intro(r==='instructor'?'Plan collections':'Payments',r==='admin'?'Record actual school receipts and completed refunds.':'Your plan payment history.')+paymentsView(payments,r)+'<button class="secondary section-gap" id="refresh">Refresh status</button>';
  else if(page==='syllabus')body=intro(r==='admin'?'Theory resources':'Learning & progress',r==='admin'?'Add school-reviewed YouTube videos to the syllabus.':'Theory is marked by you. Practical progress is marked by your instructor.')+syllabusView(course,r==='admin');
- else if(r==='student')body=page==='plans'?plansView({state}):page==='book'?bookView({state,draft,times,slotError,loadingSlots,busy}):learnerOverview({state,course,metrics});
+ else if(r==='student')body=page==='plans'?plansView({state}):page==='book'?bookView({state,draft,times,slotError,loadingSlots,busy}):learnerOverview({state,course,metrics})+recommendationsView(recommendations);
  else if(r==='instructor')body=page==='learners'?learnersView({learners}):instructorOverview({state,metrics,filter});
  else if(page==='instructors')body=instructorsView({state});
  else if(page==='fleet')body=fleetView({state});
@@ -116,6 +117,7 @@ function bind() {
  if($('#block-date-form'))$('#block-date-form').onsubmit=event=>{event.preventDefault();const f=new FormData(event.currentTarget);scheduleChange('set_blocked_date',{date:f.get('date'),reason:f.get('reason'),blocked:true},'#blocked-error');};
  document.querySelectorAll('[data-unblock]').forEach(b=>b.onclick=()=>scheduleChange('set_blocked_date',{date:b.dataset.unblock,blocked:false},'#blocked-error'));
  document.querySelectorAll('[data-retry-notice]').forEach(b=>b.onclick=()=>perform('retry_notification',{id:b.dataset.retryNotice},'Notice queued for retry.'));
+ document.querySelectorAll('[data-recommendation-feedback]').forEach(b=>b.onclick=()=>perform('recommendation_feedback',{recommendation_id:b.dataset.recommendationFeedback,feedback:b.dataset.feedback},'Learning suggestion updated.'));
  if($('#lesson-date'))$('#lesson-date').onchange=event=>{draft.date=event.target.value;availability();};
  if($('#vehicle'))$('#vehicle').onchange=event=>{draft.vehicle=event.target.value;availability();};
  if($('#slots-retry'))$('#slots-retry').onclick=availability;

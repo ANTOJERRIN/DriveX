@@ -25,4 +25,10 @@ union all select 'old dispatchers cannot bypass new rules',not has_function_priv
  and not has_function_privilege('authenticated','drivex_private.dispatch_with_availability(text,jsonb)','EXECUTE')
 union all select 'notification queue is service-only',has_function_privilege('service_role','public.drivex_notification_jobs(text,jsonb)','EXECUTE')
  and not has_function_privilege('authenticated','public.drivex_notification_jobs(text,jsonb)','EXECUTE') and not has_function_privilege('anon','public.drivex_notification_jobs(text,jsonb)','EXECUTE')
-union all select 'booking and refund queue triggers exist',(select count(*)=2 from pg_trigger where tgname in ('drivex_booking_notifications','drivex_refund_notifications') and not tgisinternal);
+union all select 'booking and refund queue triggers exist',(select count(*)=2 from pg_trigger where tgname in ('drivex_booking_notifications','drivex_refund_notifications') and not tgisinternal)
+union all select 'recommendation feedback table exists',to_regclass('drivex_private.recommendation_feedback') is not null
+union all select 'recommendation helpers cannot bypass dispatcher',not has_function_privilege('authenticated','drivex_private.learning_recommendations(uuid,integer,boolean)','EXECUTE')
+ and not has_function_privilege('anon','drivex_private.learning_recommendations(uuid,integer,boolean)','EXECUTE')
+ and not has_function_privilege('authenticated','drivex_private.dispatch_before_recommendations(text,jsonb)','EXECUTE')
+ and not has_function_privilege('anon','drivex_private.dispatch_before_recommendations(text,jsonb)','EXECUTE')
+union all select 'core SHA-256 matches standard test vector',encode(sha256(convert_to('abc','UTF8')),'hex')='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';

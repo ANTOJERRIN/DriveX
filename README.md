@@ -20,6 +20,7 @@ Hosted Auth/SMTP, actual Razorpay test payments, email delivery/cron, production
 - **Availability:** instructor/admin weekly hours and blocked dates control the actual slots. Edits that invalidate an existing lesson are rejected.
 - **Notices:** booking, cancellation, refund and reminder events enter a private queue. A protected worker sends plain-text emails through Resend with capped retries and provider idempotency keys. Admins can inspect status and retry failed jobs.
 - **Offline/install:** supporting browsers can install DriveX. Offline navigation shows a public reconnect page. Account data, API responses, sessions and payments are not cached or replayed by the service worker.
+- **Learning suggestions:** the database recommends the next unfinished theory topic and practical skill, prioritizing practice when recent instructor scores are low. Learners can mark suggestions helpful or hide them until their learning context changes. SHA-256 identifies recommendation contexts and duplicate feedback; Supabase Auth remains responsible for passwords. This feature is pending hosted migration and acceptance.
 
 ## Development
 
@@ -47,6 +48,7 @@ An isolated UI fixture is available with `node tests/browser-server.mjs` at `htt
 | `dist/router.mjs` | Role-scoped screen URLs, refresh and Back/Forward navigation |
 | `dist/workspace.mjs` | Complete role-specific RPC loading; stale refresh/sign-out response suppression |
 | `dist/controls.mjs` | Temporary action locking that preserves disabled controls |
+| `dist/recommendations.mjs` | Escaped learner suggestions, feedback controls and unavailable/complete states |
 | `dist/presentation.mjs` | Escaped views, navigation, progress and formatting |
 | `dist/portals/`, `dist/scheduling.mjs` | Role-specific views, teaching-hours editor and email-status screen |
 | `dist/pwa.mjs`, `dist/sw.js`, `dist/manifest.webmanifest` | Installation, offline status and public-shell caching |

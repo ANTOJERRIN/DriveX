@@ -31,6 +31,10 @@ dialog { max-height:90dvh; overflow:auto; }
 .plan-card .price { margin:20px 0; }
 .booking-form h2 { margin-top:12px; }
 .hours-grid { display:grid; gap:16px; max-width:650px; }
+.recommendation-item { padding:20px 0; border-bottom:1px solid #e9eee9; }
+.recommendation-item:last-child { border-bottom:0; }
+.recommendation-item p { margin:12px 0; line-height:1.6; }
+.recommendation-actions { display:flex; flex-wrap:wrap; gap:16px; align-items:center; }
 .connection-status { padding:12px 20px; background:#fff1cd; color:#503b00; position:sticky; top:0; z-index:20; }
 .install-app { position:fixed; bottom:18px; right:18px; z-index:30; box-shadow:0 4px 20px #142c2530; }
 .offline-shell { max-width:620px; padding:40px 24px; margin:10vh auto; }

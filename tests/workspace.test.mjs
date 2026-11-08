@@ -13,7 +13,7 @@ function api(role,{approval_status='approved',instructors=[]}={}){
 }
 
 test('each role loads its own complete workspace exclusively through dispatcher actions',async()=>{
- const expected={student:['snapshot','my_lessons','my_payments','dashboard'],instructor:['snapshot','instructor_learners','instructor_earnings','instructor_overview','working_hours'],admin:['snapshot','admin_lessons','my_payments','admin_overview','working_hours','notification_status']};
+ const expected={student:['snapshot','my_lessons','my_payments','dashboard','learning_recommendations'],instructor:['snapshot','instructor_learners','instructor_earnings','instructor_overview','working_hours'],admin:['snapshot','admin_lessons','my_payments','admin_overview','working_hours','notification_status']};
  for(const role of Object.keys(expected)){
   const {rpc,calls}=api(role,{instructors:[{id:'teacher'}]});
   const result=await loadWorkspace(rpc);

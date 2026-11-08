@@ -136,6 +136,21 @@ These actions use the same authenticated `public.drivex` entry point. The prior 
 
 New instructor profiles receive the default seven-day teaching week. Blocked dates cause a specific validation error for learner availability/reservation. A closed weekday returns `[]`. Schedule changes and reservations coordinate through a lock on the instructor profile; existing booking exclusion constraints are retained.
 
+## Learning recommendations and hashing
+
+| Action | Roles | Payload | Response / rules |
+| --- | --- | --- | --- |
+| `learning_recommendations` | Learner for self; approved current paid instructor for assigned learner; admin | `{learner_id?,limit?:3}` | `{algorithm:"curriculum-v1",fingerprint,completed,items}`. Limit must be a JSON integer from 1 to 10. At most two suggestions: the earliest unfinished theory topic and practical skill. Instructor/admin calls should specify the learner UUID. Cross-learner requests are denied. |
+| `recommendation_feedback` | Learner for self only | `{recommendation_id,feedback:"helpful"\|"dismissed"}` | `{status:"success",idempotent}`. Accepts only a current server-generated identifier. Repeating identical feedback makes no additional write; changing feedback updates the same learner/lesson row. |
+
+Each item contains `recommendation_id,lesson_id,kind,title,youtube_url,priority,reason,resource_available,feedback`. No assessment notes, contact details or other learners' data are returned. `completed` is true only when a nonempty curriculum has no unfinished items. A hidden result is not curriculum completion. Missing school videos are explicitly identified.
+
+The server ranks theory at 170 and practical at `150 + round((10 - average_recent_score) * 10)` using at most the latest three completed assessments, ordered by lesson end time and UUID. Without assessments, practical ranks at 150. Only the earliest unfinished item of each kind is eligible; ties have a deterministic kind/UUID order. A recent average at or below five explains the practical suggestion as additional guided practice. This is an explainable rule-based feature, not a trained prediction model or a driving-readiness assessment.
+
+PostgreSQL's core SHA-256 hashes canonical JSONB containing the algorithm version, learner UUID, ordered curriculum/progress and recent assessment identifiers/scores/end times. Each recommendation ID hashes the version, that context fingerprint and lesson UUID. Unchanged inputs give stable identifiers; progress, resource or recent-score changes produce new identifiers and stale feedback is ignored. The private feedback table stores at most one row per learner/lesson with the current hash, choice and update time. Reading suggestions writes nothing.
+
+Hashes are identifiers for duplicate detection and context changes, not encryption, signatures, passwords or authorization tokens. Knowing a hash grants no access. Supabase Auth continues to own credential hashing and verification. Suggestions never change roles, prices, payments, credits, curriculum completion or bookings. They do not initiate external requests. The private helper and previous dispatcher are owner-only; browsers use `public.drivex` exclusively.
+
 ### Notification service endpoint
 
 `POST /functions/v1/notification-worker` is a machine endpoint, with gateway JWT verification disabled and a dedicated `Authorization: Bearer <worker-token>` check inside the function. Tokens must be at least 32 characters and match the server's `NOTIFICATION_WORKER_TOKEN`. The request body does not supply recipients or messages. Missing/wrong caller credentials return 401; incomplete server delivery configuration returns 503 before claiming work. Success returns aggregate `{processed,sent,retried,failed}` counts, never addresses, message text or provider error bodies.
