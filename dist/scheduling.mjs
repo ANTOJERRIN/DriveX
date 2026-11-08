@@ -15,9 +15,10 @@ export function parseWorkingHours(form) {
  }
  return hours;
 }
-export function availabilityView({state,hours,selectedInstructor}) {
+export function availabilityView({state,hours,selectedInstructor,unavailable=false}) {
  const admin=state.me.role==='admin';
  const picker=admin?`<label>Instructor<select id="hours-instructor">${state.instructors.map(i=>`<option value="${esc(i.id)}" ${i.id===selectedInstructor?'selected':''}>${esc(i.name)}</option>`).join('')}</select></label>`:'';
+ if(unavailable)return intro('Teaching availability','The saved teaching schedule could not be loaded.')+empty('Schedule unavailable','Refresh before editing your teaching hours.')+'<button class="secondary" id="refresh">Retry schedule</button>';
  if(!hours)return intro('Teaching availability','Set weekly hours and dates away from teaching.')+picker+empty('No instructor schedule to edit','Add an instructor first.');
  return `${intro('Teaching availability','All times are in India Standard Time. Existing lessons must be resolved before removing their hours.')}<section class="panel panel-pad">${picker}
   <h2>Weekly hours</h2><p class="sub" id="hours-help">Use 08:00-12:00, 14:00-18:00. Leave a day blank for a day off. Lessons are one hour; each window starts on the hour or half-hour.</p>
@@ -29,7 +30,7 @@ export function availabilityView({state,hours,selectedInstructor}) {
 const eventNames={booking_confirmed:'Lesson booked',booking_cancelled:'Lesson cancelled',lesson_reminder:'Lesson reminder',refund_recorded:'Refund record'};
 const errorNames={network_error:'Email service unavailable',provider_throttled:'Email provider is busy',invalid_recipient:'Address or email rejected',provider_failure:'Email provider rejected the request',attempt_limit:'Retry limit reached',recipient_changed:'Recipient address changed'};
 export function notificationsView(data) {
- if(!data)return intro('School emails','Lesson updates and reminder delivery.')+empty('Email status unavailable');
+ if(!data)return intro('School emails','Lesson updates and reminder delivery.')+empty('Email status unavailable')+'<button class="secondary" id="refresh">Retry email status</button>';
  const ready=data.scheduler.installed&&data.scheduler.worker_configured,c=data.counts;
  return `${intro('School emails','Lesson updates, cancellation notices, refund records and reminders.')}<div class="stats">${stat('Queued',c.pending)}${stat('Ready to send',c.due)}${stat('Accepted by provider',c.sent)}${stat('Needs attention',c.failed)}</div>
   <p class="hint">${ready?'The delivery schedule is configured. Provider acceptance does not prove inbox delivery.':'Email delivery needs server setup before these notices can be sent.'}</p>

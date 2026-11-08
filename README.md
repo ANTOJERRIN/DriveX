@@ -17,6 +17,8 @@ Hosted Auth/SMTP, actual Razorpay test payments, email delivery/cron, production
 - **Administrator:** instructor review, all bookings, actual vehicle management, school receipts, full-refund records for eligible unused plans and theory-video resources.
 - **Payments:** the server creates and stores a Razorpay order. Signed webhooks reconcile payment events; the browser polls the database and never activates a plan from the checkout callback alone. Test mode is the default. Manual receipt entry records money already received by staff.
 - **Credits:** confirmed reservations cannot exceed unspent credits. Completion consumes a credit exactly once; cancellation before start releases the reservation. The database prevents overlapping learner, instructor and vehicle bookings.
+- **Purchase recovery:** a pending plan appears on the learner dashboard and directs the learner to Payments. New purchases are disabled while a plan is pending/active or no approved instructor is available. Receipt review and all-reserved credits show the appropriate next step before booking.
+- **Save recovery:** successful writes followed by failed refreshes show a saved-but-refresh-required state. Lost responses require reading the latest data before another write. No booking, payment, receipt or other write is automatically replayed. Signing out invalidates late results.
 - **Availability:** instructor/admin weekly hours and blocked dates control the actual slots. Edits that invalidate an existing lesson are rejected.
 - **Notices:** booking, cancellation, refund and reminder events enter a private queue. A protected worker sends plain-text emails through Resend with capped retries and provider idempotency keys. Admins can inspect status and retry failed jobs.
 - **Offline/install:** supporting browsers can install DriveX. Offline navigation shows a public reconnect page. Account data, API responses, sessions and payments are not cached or replayed by the service worker.
@@ -48,6 +50,8 @@ An isolated UI fixture is available with `node tests/browser-server.mjs` at `htt
 | `dist/router.mjs` | Role-scoped screen URLs, refresh and Back/Forward navigation |
 | `dist/workspace.mjs` | Complete role-specific RPC loading; stale refresh/sign-out response suppression |
 | `dist/controls.mjs` | Temporary action locking that preserves disabled controls |
+| `dist/mutations.mjs` | Single-write execution, uncertain-result reconciliation and stale-session suppression |
+| `dist/learner-state.mjs` | Pending-plan summary and learner next-step decisions |
 | `dist/recommendations.mjs` | Escaped learner suggestions, feedback controls and unavailable/complete states |
 | `dist/presentation.mjs` | Escaped views, navigation, progress and formatting |
 | `dist/portals/`, `dist/scheduling.mjs` | Role-specific views, teaching-hours editor and email-status screen |
@@ -71,6 +75,8 @@ An isolated UI fixture is available with `node tests/browser-server.mjs` at `htt
 Screen URLs use fragments such as `/#/payments` and `/#/book`; refreshing retains the screen and browser Back/Forward changes screens. The server-provided role determines the available screens. Unknown/cross-role links return to Overview; unapproved instructors remain on their review screen. Fragments contain screen names only, never account or payment details. Supabase confirmation/recovery fragments are consumed before screen routing starts.
 
 Session refresh retains the current session after connection failures, throttling or server outages so a later request can retry. Rejected refresh credentials clear it. Responses from a previous sign-in/refresh cannot restore a signed-out session or erase a newer login. Workspace loading publishes all required data together and discards superseded responses.
+
+Teaching-hours, school-email status and recommendation failures are isolated from core portal loading. Their screens display unavailable/retry states. They never substitute empty teaching schedules or invent delivery status. Local HTTP integration tests run the real client, dispatcher and database through pending purchases, edited teaching hours, booking, post-save read failure/reconciliation, completion and cancellation. The fixture serves service-worker, manifest and icon content types explicitly; this does not establish browser installation or hosted provider behavior.
 
 ## Backend boundary
 

@@ -2,7 +2,8 @@ import {authView} from './auth-view.mjs';
 import {brand,workspaceView,pageTitle} from './layout.mjs';
 import {createRouter} from './router.mjs';
 import {createWorkspaceLoader} from './workspace.mjs';
-import {disableButtons} from './controls.mjs';
+import {disableButtons,lockMutations} from './controls.mjs';
+import {createMutationRunner} from './mutations.mjs';
 import {recommendationsView} from './recommendations.mjs';
 import {learnerOverview,plansView,bookView} from './portals/learner.mjs';
 import {instructorOverview,learnersView} from './portals/instructor.mjs';
@@ -13,27 +14,30 @@ import { configured,signedIn,login,signup,logout,recover,changePassword,handleCa
 import { esc,money,today,intro,bookingsView,paymentsView,syllabusView } from './presentation.mjs';
 import { checkout } from './checkout.mjs';
 const $=s=>document.querySelector(s);
-let state=null, page='overview', filter='all', door='student', busy=false, course=[], payments=[], learners=[], metrics={}, times=[], slotError='', loadingSlots=false, slotRequest=0;
+let state=null, page='overview', filter='all', door='student', course=[], payments=[], learners=[], metrics={}, times=[], slotError='', loadingSlots=false, slotRequest=0;
 let draft={date:today(),time:'',vehicle:''};
-let hours=null,notices=null,selectedInstructor='',recommendations=null;
+let hours=null,notices=null,selectedInstructor='',recommendations=null,unavailableFeatures=[],syncIssue='';
 const recovery=handleCallback();
 const role=()=>state?.me?.role;
 const router=createRouter({onChange:showPage});
 const workspace=createWorkspaceLoader({rpc,onLoad:applyWorkspace});
+const mutations=createMutationRunner({refresh:reload});
 function toast(message) { const t=$('#toast');t.textContent=message;t.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.style.display='none',7000); }
 function modal(title,body) { const m=$('#modal');m.innerHTML=`<div class="modal-top"><h2 id="modal-title">${esc(title)}</h2><button class="close" aria-label="Close dialog">×</button></div>${body}`;m.querySelector('.close').onclick=()=>m.close();if(!m.open)m.showModal(); }
 function errorMessage(error) { return error?.message||'Unable to complete this action. Please try again.'; }
-function clearState() {workspace.invalidate();state=null;course=[];payments=[];learners=[];metrics={};times=[];hours=null;notices=null;recommendations=null;selectedInstructor='';draft={date:today(),time:'',vehicle:''};page='overview';slotRequest++;}
+function clearState() {workspace.invalidate();mutations.reset();unavailableFeatures=[];syncIssue='';state=null;course=[];payments=[];learners=[];metrics={};times=[];hours=null;notices=null;recommendations=null;selectedInstructor='';draft={date:today(),time:'',vehicle:''};page='overview';slotRequest++;}
 async function signOut() { const request=logout();router.reset();clearState();$('#modal').close();auth();try {await request;} catch {} }
 function unavailable(error) {
   clearState();$('#app').innerHTML=`<main class="auth-panel"><section class="panel panel-pad">${brand}${intro('Unable to load DriveX',errorMessage(error))}<button class="primary" id="retry">Try again</button> <button class="secondary" id="logout">Sign out</button></section></main>`;
   $('#retry').onclick=()=>start();$('#logout').onclick=signOut;
 }
 async function reload() {
-  if(await workspace.load({selectedInstructor})&&page==='book')await availability();
+  const loaded=await workspace.load({selectedInstructor});
+  if(loaded&&page==='book')await availability();
+  return loaded;
 }
 function applyWorkspace(next) {
-  ({state,course,payments,learners,metrics,hours,notices,selectedInstructor,recommendations}=next);
+  ({state,course,payments,learners,metrics,hours,notices,selectedInstructor,recommendations,unavailableFeatures}=next);
   if(!state.vehicles?.some(v=>v.id===draft.vehicle&&v.active)) draft.vehicle=state.vehicles?.find(v=>v.active)?.id||'';
   page=router.activate(role(),{pending:next.pending});
   render();
@@ -63,56 +67,76 @@ function render() {
  const r=role(), pending=r==='instructor'&&state.me.approval_status!=='approved';
  let body;
  if(pending)body=`${intro(state.me.approval_status==='rejected'?'Application needs attention':'Waiting for admin approval',state.me.approval_status==='rejected'?'Contact the school to discuss your application.':'Your account will be reviewed before you can accept learners.')}<button class="secondary" id="refresh">Refresh status</button>`;
- else if(page==='availability')body=availabilityView({state,hours,selectedInstructor});
+ else if(page==='availability')body=availabilityView({state,hours,selectedInstructor,unavailable:unavailableFeatures.includes('working_hours')});
  else if(page==='notifications')body=notificationsView(notices);
  else if(page==='lessons')body=intro(r==='student'?'My lessons':r==='admin'?'All bookings':'My schedule','All lesson times are in India Standard Time.')+bookingsView(state.bookings,r,filter);
  else if(page==='payments'||page==='earnings')body=intro(r==='instructor'?'Plan collections':'Payments',r==='admin'?'Record actual school receipts and completed refunds.':'Your plan payment history.')+paymentsView(payments,r)+'<button class="secondary section-gap" id="refresh">Refresh status</button>';
  else if(page==='syllabus')body=intro(r==='admin'?'Theory resources':'Learning & progress',r==='admin'?'Add school-reviewed YouTube videos to the syllabus.':'Theory is marked by you. Practical progress is marked by your instructor.')+syllabusView(course,r==='admin');
- else if(r==='student')body=page==='plans'?plansView({state}):page==='book'?bookView({state,draft,times,slotError,loadingSlots,busy}):learnerOverview({state,course,metrics})+recommendationsView(recommendations);
+ else if(r==='student')body=page==='plans'?plansView({state}):page==='book'?bookView({state,draft,times,slotError,loadingSlots,busy:mutations.blocked}):learnerOverview({state,course,metrics})+recommendationsView(recommendations);
  else if(r==='instructor')body=page==='learners'?learnersView({learners}):instructorOverview({state,metrics,filter});
  else if(page==='instructors')body=instructorsView({state});
  else if(page==='fleet')body=fleetView({state});
  else body=adminOverview({metrics});
- $('#app').innerHTML=workspaceView({me:state.me,page,body,pending});
+ $('#app').innerHTML=workspaceView({me:state.me,page,body:(syncIssue?`<section class="banner-alert" role="alert"><div><h2>Refresh required</h2><p>${esc(syncIssue)}</p></div><button class="secondary" id="sync-refresh">Refresh saved data</button></section>`:'')+body,pending});
  document.title=pending?'Instructor review · DriveX':pageTitle(r,page);
  bind();
+ lockMutations(document,mutations.blocked);
+ if($('#sync-refresh'))$('#sync-refresh').disabled=mutations.busy;
 }
 function navigate(next) {router.go(next);}
 async function showPage(next) {page=next;filter='all';times=[];draft.time='';slotError='';slotRequest++;render();if(page==='book')await availability();$('#page-title')?.focus();window.scrollTo(0,0);}
 async function availability() {
+ if(!state?.active_enrollment||state.pending_enrollment||state.active_enrollment.review_required||Number(state.active_enrollment.credits_remaining)<=Number(state.active_enrollment.credits_reserved)){times=[];draft.time='';slotError='';loadingSlots=false;render();return;}
  const request=++slotRequest,values={date:draft.date,vehicle:draft.vehicle};times=[];draft.time='';slotError='';loadingSlots=true;render();
  try {if(!values.vehicle)throw Error('No active training vehicles. Contact the school.');const rows=await rpc('availability',values);if(request===slotRequest)times=rows||[];}
  catch(error){if(request===slotRequest)slotError=errorMessage(error);}
  finally{if(request===slotRequest){loadingSlots=false;if(page==='book')render();}}
 }
-async function perform(action,payload,message) {
- if(busy)return;busy=true;const restoreButtons=disableButtons(document);
- try {await rpc(action,payload);$('#modal').close();await reload();if(message)toast(message);}
- catch(error){if($('#modal').open&&$('#modal .error'))$('#modal .error').textContent=errorMessage(error);else toast(errorMessage(error));}
- finally{busy=false;restoreButtons();if(state)render();}
+async function mutate(operation,{message='',errorSelector,onSaved=()=>{}}={}) {
+ if(mutations.blocked)return {status:'blocked'};
+ const restoreButtons=disableButtons(document);
+ const outcome=await mutations.run(operation,{onSaved});
+ restoreButtons();
+ if(outcome.status==='stale')return outcome;
+ if(outcome.status==='saved'){syncIssue='';if(message)toast(message);}
+ else if(outcome.status==='saved_refresh_failed')syncIssue='Your change was saved, but the latest data could not be loaded. Refresh before submitting another change.';
+ else if(outcome.status==='unknown'){syncIssue=errorMessage(outcome.error)+' Check the saved data before trying again; do not submit the same action twice.';$('#modal').close();}
+ else if(outcome.status==='rejected'){
+  const field=(errorSelector&&$(errorSelector))||($('#modal').open&&$('#modal .error'));
+  if(field)field.textContent=errorMessage(outcome.error);else toast(errorMessage(outcome.error));
+ }
+ if(state&&outcome.status!=='rejected')render();
+ lockMutations(document,mutations.blocked);
+ return outcome;
+}
+async function perform(action,payload,message,options={}) {
+ return mutate(()=>rpc(action,payload),{message,onSaved:()=>$('#modal').close(),...options});
+}
+async function refreshScreen() {
+ const outcome=await mutations.reconcile();
+ if(outcome.status==='stale'||outcome.status==='blocked')return;
+ if(outcome.status==='refreshed'){syncIssue='';render();return;}
+ if(!signedIn()){router.reset();clearState();auth('login','Your session expired. Please sign in again.');return;}
+ syncIssue='The latest data could not be loaded. Check your connection and refresh again before making changes.';
+ if(state)render();else unavailable(outcome.error);
 }
 function formModal(title,fields,submit,callback,note='') {
  modal(title,`<form id="action-form" class="modal-body"><p class="sub">${esc(note)}</p>${fields}<p class="error" role="alert"></p><button class="primary">${esc(submit)}</button></form>`);
- $('#action-form').onsubmit=event=>{event.preventDefault();if(busy)return;callback(new FormData(event.currentTarget));};
+ $('#action-form').onsubmit=event=>{event.preventDefault();if(mutations.blocked)return;callback(new FormData(event.currentTarget));};
 }
 async function pay(id) {
- if(busy)return;busy=true;toast('Opening secure checkout…');
- try {await checkout(id,{invokeFunction,rpc,onPending:()=>toast('Payment submitted. Waiting for server confirmation…')});await reload();toast('Payment received. Your plan is active.');}
- catch(error){toast(errorMessage(error));try{await reload();}catch{}}
- finally{busy=false;}
+ if(mutations.blocked)return;
+ toast('Opening secure checkout...');
+ return mutate(()=>checkout(id,{invokeFunction,rpc,onPending:()=>toast('Payment submitted. Waiting for server confirmation...')}),{message:'Payment received. Your plan is active.'});
 }
 function bind() {
  $('#logout').onclick=signOut;
  document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navigate(b.dataset.nav));
  document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;render();});
- if($('#refresh'))$('#refresh').onclick=async()=>{try{await reload();}catch(error){unavailable(error);}};
- if($('#hours-instructor'))$('#hours-instructor').onchange=async event=>{selectedInstructor=event.target.value;try{await reload();}catch(error){toast(errorMessage(error));}};
- const scheduleChange=async(action,payload,errorSelector)=>{
-  if(busy)return;busy=true;const form=action==='set_working_hours'?$('#hours-form'):$('#block-date-form'),button=form?.querySelector('button');if(button)button.disabled=true;
-  try{await rpc(action,{instructor_id:hours.instructor_id,...payload});await reload();toast('Teaching availability saved.');}
-  catch(error){const field=$(errorSelector);if(field)field.textContent=errorMessage(error);else toast(errorMessage(error));}
-  finally{busy=false;if(button)button.disabled=false;}
- };
+ if($('#refresh'))$('#refresh').onclick=refreshScreen;
+ if($('#sync-refresh'))$('#sync-refresh').onclick=refreshScreen;
+ if($('#hours-instructor'))$('#hours-instructor').onchange=async event=>{selectedInstructor=event.target.value;await refreshScreen();};
+ const scheduleChange=(action,payload,errorSelector)=>perform(action,{instructor_id:hours.instructor_id,...payload},'Teaching availability saved.',{errorSelector});
  if($('#hours-form'))$('#hours-form').onsubmit=event=>{event.preventDefault();try{const hours=parseWorkingHours(new FormData(event.currentTarget));scheduleChange('set_working_hours',{hours},'#hours-error');}catch(error){$('#hours-error').textContent=errorMessage(error);}};
  if($('#block-date-form'))$('#block-date-form').onsubmit=event=>{event.preventDefault();const f=new FormData(event.currentTarget);scheduleChange('set_blocked_date',{date:f.get('date'),reason:f.get('reason'),blocked:true},'#blocked-error');};
  document.querySelectorAll('[data-unblock]').forEach(b=>b.onclick=()=>scheduleChange('set_blocked_date',{date:b.dataset.unblock,blocked:false},'#blocked-error'));
@@ -126,9 +150,8 @@ function bind() {
  document.querySelectorAll('[data-enroll]').forEach(b=>b.onclick=()=>{
   const plan=state.plans.find(p=>p.id===b.dataset.enroll);
   formModal('Choose your instructor',`<p>${esc(plan.name)} · ${money(plan.price_inr)}</p><label>Instructor<select name="instructor_id" required><option value="">Select an approved instructor</option>${state.instructors.map(i=>`<option value="${esc(i.id)}">${esc(i.name)} · ${esc(i.specialty)}</option>`).join('')}</select></label>`,'Continue to payment',async f=>{
-   if(busy)return;busy=true;$('#action-form button').disabled=true;
-   try{const en=await rpc('enroll',{plan_id:plan.id,instructor_id:f.get('instructor_id')});$('#modal').close();busy=false;await pay(en.enrollment_id);}
-   catch(error){$('#modal .error').textContent=errorMessage(error);busy=false;$('#action-form button').disabled=false;}
+   const outcome=await perform('enroll',{plan_id:plan.id,instructor_id:f.get('instructor_id')},'');
+   if(outcome.status==='saved')await pay(outcome.value.enrollment_id);
   },'Your plan starts only after payment is received.');
  });
  document.querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>pay(b.dataset.pay));

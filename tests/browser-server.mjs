@@ -29,7 +29,7 @@ export async function createFixtureServer({port=0,seedPaid=false,paymentsEnabled
   throw Error('External access is disabled in this isolated fixture.');
  };
  const orderHandler=createOrderHandler({env,fetcher}),paymentHandler=webhookHandler({env,fetcher});
- const mime={'.html':'text/html','.mjs':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.json':'application/json'};
+ const mime={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.webmanifest':'application/manifest+json','.json':'application/json'};
  const server=createServer(async(req,res)=>{
   const send=(status,body,type='application/json')=>{res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store'});res.end(type==='application/json'?JSON.stringify(body):body);};
   try {
@@ -38,6 +38,7 @@ export async function createFixtureServer({port=0,seedPaid=false,paymentsEnabled
    if(req.method==='POST'){
     let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>262144)throw Error('Request is too large.');}
     if(url.pathname.startsWith('/functions/v1/')){
+     if(!['/functions/v1/create-order','/functions/v1/razorpay-webhook'].includes(url.pathname))return send(404,{error:'Fixture function not found.'});
      if(!paymentsEnabled)return send(503,{error:'Payments are disabled in the isolated UI fixture.'});
      const input=new Request(url,{method:'POST',headers:req.headers,body:raw});
      const result=await (url.pathname.endsWith('/create-order')?orderHandler(input):paymentHandler(input));
@@ -70,7 +71,7 @@ export async function createFixtureServer({port=0,seedPaid=false,paymentsEnabled
    const file=resolve(root,'.'+(url.pathname==='/'?'/index.html':url.pathname));
    if(relative(root,file).startsWith('..')||file===root)return send(403,{});
    return send(200,await readFile(file),mime[extname(file)]||'text/plain');
-  } catch(error) {if(!res.writableEnded)send(error.code==='42501'?403:400,{message:error.message,code:error.code});}
+  } catch(error) {if(!res.writableEnded)send(error.code==='ENOENT'?404:error.code==='42501'?403:400,{message:error.code==='ENOENT'?'File not found.':error.message,code:error.code});}
  });
  await new Promise((accept,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',accept);});
  base='http://127.0.0.1:'+server.address().port;

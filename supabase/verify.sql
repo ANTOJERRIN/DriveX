@@ -31,4 +31,6 @@ union all select 'recommendation helpers cannot bypass dispatcher',not has_funct
  and not has_function_privilege('anon','drivex_private.learning_recommendations(uuid,integer,boolean)','EXECUTE')
  and not has_function_privilege('authenticated','drivex_private.dispatch_before_recommendations(text,jsonb)','EXECUTE')
  and not has_function_privilege('anon','drivex_private.dispatch_before_recommendations(text,jsonb)','EXECUTE')
-union all select 'core SHA-256 matches standard test vector',encode(sha256(convert_to('abc','UTF8')),'hex')='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
+union all select 'core SHA-256 matches standard test vector',encode(sha256(convert_to('abc','UTF8')),'hex')='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+union all select 'portal integration cannot bypass dispatcher',not has_function_privilege('authenticated','drivex_private.dispatch_before_portal_integration(text,jsonb)','EXECUTE')
+ and not has_function_privilege('anon','drivex_private.dispatch_before_portal_integration(text,jsonb)','EXECUTE');

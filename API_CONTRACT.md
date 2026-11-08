@@ -24,6 +24,7 @@ Snapshot:
     "credits_total": 10, "credits_used": 0, "credits_remaining": 10,
     "credits_reserved": 1, "status": "active", "review_required": false
   },
+  "pending_enrollment": null,
   "instructors": [{ "id": "uuid", "name": "Instructor", "specialty": "Driving instructor", "approval_status": "approved", "phone": "" }],
   "vehicles": [{ "id": "uuid", "name": "School car", "reg": "REGISTRATION", "transmission": "Manual", "active": true }],
   "bookings": []
@@ -33,6 +34,8 @@ Snapshot:
 `active_enrollment` is null without an active plan. Admin fleet includes inactive vehicles; other roles see active vehicles only. Learners see their own bookings; approved instructors see their own assigned confirmed/completed bookings; admins see all. Booking objects include `id,student_id,student,student_phone,instructor,instructor_name,vehicle,vehicle_name,enrollment_id,date,time,starts_at,ends_at,status,score,notes`. `date,time` are IST; timestamps include a timezone. Learner contact information is disclosed only to the authorized assigned instructor/admin. Instructor phone numbers are visible only to that instructor/admin.
 
 ## Learner plans and lessons
+
+Learner `snapshot` and `me` responses also include `pending_enrollment`, either null or `{id,plan_id,plan_name,instructor_id,instructor_name,credits_total,amount_inr,payment_status}`. It is scoped to the authenticated learner and drawn from their latest pending enrollment and stored payment amount. It is not returned to instructors/admins; unapproved instructors still receive only `{me}`. Failed attempts remain resumable through Payments. No browser-supplied price, instructor or payment status changes this summary. This additive response requires `20261108000200_portal_integration.sql`.
 
 | Action | Roles | Payload | Response / rules |
 | --- | --- | --- | --- |
@@ -60,6 +63,8 @@ All new lessons are one hour, within the enrolled instructor's weekly hours in I
 | `mark_practical_done` | Current paid instructor | `{learner_id,lesson_id}` | `{status:"success"}`; practical kind only, idempotent |
 | `complete_booking`, `assess` | Assigned approved instructor | `{booking,score:1,notes:"..."}` | `{id,status:"completed"}`; after end, score 1–10 and notes 1–1,500 characters; consumes one credit. Repeat completion is idempotent |
 | `instructor_earnings` | Approved instructor | `{}` | Paid/reviewed plan payment objects for their own enrollments, with learner first name only |
+
+`instructor_overview.learners_count` counts active entries from the same latest-paid, reviewed assignment rules as `instructor_learners`. Historical activations awaiting receipt review and former assignments do not inflate this number.
 
 The current instructor is selected from the learner's most recently activated paid, reviewed active/finished enrollment. A former instructor cannot keep marking another instructor's current learner. Historical attributable plan receipts remain in that instructor's collections. Collections are school receipts, not salary/payout calculations.
 
