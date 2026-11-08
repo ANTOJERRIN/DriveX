@@ -1,73 +1,87 @@
 # DriveX
 
-Driving-school management with Supabase authentication and persistent Postgres operations. **The mock application has been removed.** Production starts empty; there are no sample users, bookings, scores or payments.
+A plan-based driving-school app for learners, instructors and school administrators. Frontend: vanilla JavaScript in `dist/`. Backend: Supabase Auth, Postgres and Edge Functions. Hosting: Render.
 
-## Current deployment status
+Learners buy the 10-Day plan (INR 1,500 / 10 credits) or Monthly plan (INR 4,000 / 30 credits), choose an approved instructor and reserve one-hour lessons. One credit is consumed when the assigned instructor completes a lesson. Prices, roles, payment state and credit balances are server-controlled.
 
-Connected to the dedicated **Drivex** project (`gakrpgdwvtfvfbvtbofu`) in **ANTOJERRIN's Org**. The initial backend schema and extension relocation migrations have been applied. The frontend uses the project's public publishable key.
+## Release status
 
-All four private tables have RLS enabled and no direct browser read/write privileges. The anonymous RPC is denied; authenticated calls are authorized in the dispatcher. No sample application records were inserted.
+The local changes are **not a live release**. The dedicated Supabase project `gakrpgdwvtfvfbvtbofu` reported inactive; restoration was rejected because the organization reached its free-project limit. No database migration, Edge Function deployment or Render deployment was performed in this work. The user has authorized publishing the release branch to GitHub. Hosted deployment remains on hold pending environment setup and acceptance checks.
 
-The owner must still configure the Supabase Auth Site URL / redirect URLs, create and confirm their account, and bootstrap administrator access. SMTP/email delivery and a complete user booking journey remain to be verified. Online checkout is not connected; payments are recorded from actual school receipts.
+Hosted Auth/SMTP, actual Razorpay test payments, email delivery/cron, production migration history, browser/mobile appearance and concurrent sessions against hosted Postgres are **NOT VERIFIED**. See [the product audit](docs/PRODUCT_AUDIT.md) for the inventory and [the release procedure](docs/RELEASE.md) for remaining steps. The additional requested abilities—editable instructor hours, transactional email and the installable/offline shell—are implemented locally; [their setup guide](docs/ADDITIONAL_ABILITIES.md) lists the hosted checks.
 
-## Local run and tests
+## Product flows
 
-Node 20+ and Python 3:
+- **Learner:** signup/confirmation, login/recovery, plans, secure checkout, payment status, booking/cancellation, theory videos and learning progress.
+- **Instructor:** pending/rejected application status; after admin approval, current learners, practical milestones, schedules, post-lesson assessment and attributable school plan collections.
+- **Administrator:** instructor review, all bookings, actual vehicle management, school receipts, full-refund records for eligible unused plans and theory-video resources.
+- **Payments:** the server creates and stores a Razorpay order. Signed webhooks reconcile payment events; the browser polls the database and never activates a plan from the checkout callback alone. Test mode is the default. Manual receipt entry records money already received by staff.
+- **Credits:** confirmed reservations cannot exceed unspent credits. Completion consumes a credit exactly once; cancellation before start releases the reservation. The database prevents overlapping learner, instructor and vehicle bookings.
+- **Purchase recovery:** a pending plan appears on the learner dashboard and directs the learner to Payments. New purchases are disabled while a plan is pending/active or no approved instructor is available. Receipt review and all-reserved credits show the appropriate next step before booking.
+- **Save recovery:** successful writes followed by failed refreshes show a saved-but-refresh-required state. Lost responses require reading the latest data before another write. No booking, payment, receipt or other write is automatically replayed. Signing out invalidates late results.
+- **Availability:** instructor/admin weekly hours and blocked dates control the actual slots. Edits that invalidate an existing lesson are rejected.
+- **Notices:** booking, cancellation, refund and reminder events enter a private queue. A protected worker sends plain-text emails through Resend with capped retries and provider idempotency keys. Admins can inspect status and retry failed jobs.
+- **Offline/install:** supporting browsers can install DriveX. Offline navigation shows a public reconnect page. Account data, API responses, sessions and payments are not cached or replayed by the service worker.
+- **Learning suggestions:** the database recommends the next unfinished theory topic and practical skill, prioritizing practice when recent instructor scores are low. Learners can mark suggestions helpful or hide them until their learning context changes. SHA-256 identifies recommendation contexts and duplicate feedback; Supabase Auth remains responsible for passwords. This feature is pending hosted migration and acceptance.
+
+## Development
+
+Use Node 20+ and Python 3. The existing lockfile pins the single test dependency, PGlite.
 
 ```sh
 npm ci
-npm test
-npm run check
+npm test && npm run check
+npm run audit:secrets
 npm start
-# http://localhost:3000
 ```
 
-There is no frontend build or CDN JavaScript dependency. Google Fonts is optional; system fonts are the fallback.
+Open `http://localhost:3000`. For public build configuration, set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` locally or in Render, then run `npm run build`. A local ignored `.env` is supported. Never supply service-role or Razorpay secrets to the static build. Public config is validated before being written.
 
-## Connect the real backend
+PowerShell users with script execution restrictions can use `npm.cmd`.
 
-1. The dedicated **Drivex** project in ANTOJERRIN's Org is already connected.
-2. `backend/schema.sql` is already applied. Do not apply it again to the connected project. It is retained for reproducible setup in a fresh database.
-3. Configure Supabase Auth's Site URL to your deployed app URL and allow `http://localhost:3000` for local testing. Keep email confirmation enabled. Configure SMTP for reliable signup/password-reset delivery.
-4. The project URL and **publishable** key in `dist/config.mjs` are configured. They are public client configuration. Never place a service-role/secret key in the frontend, GitHub, or chat.
-5. Deploy the configured frontend, create the owner's account, confirm email and sign in once. It initially has student access.
-6. Bootstrap the first administrator with the account's verified Auth user UUID using `backend/bootstrap-admin.sql`. The SQL deliberately requires a UUID; the first arbitrary signup never gets administrator access.
-7. Have instructors create their accounts. An admin can assign instructor access by account email, and add real training vehicles. Students can now reserve lessons.
+An isolated UI fixture is available with `node tests/browser-server.mjs` at `http://127.0.0.1:3100`. It uses test-only Auth responses and the real dispatcher in PGlite, and never contacts the hosted backend or payment provider. It is not production authentication or a production server.
 
-## Functional flows
+## Source map
 
-- **Authentication:** email/password signup and sign-in, confirmation callback, password reset, refresh tokens and sign-out. Only auth session tokens are stored in sessionStorage; domain records always come from Postgres.
-- **Roles:** student/instructor/admin role is a protected database field. There is no client role switcher and no user-metadata authorization.
-- **Booking:** real availability, one-hour lessons within 90 days, server-set ₹800 price, 30-minute unpaid reservations, atomic database exclusion constraints for instructor/vehicle/student overlap.
-- **Payments:** administrator records an actual payment received directly by the school, with a unique receipt/reference and explicit verification. This is a persistent receipt ledger, **not online payment processing**. Students cannot mark themselves paid.
-- **Cancellation:** unpaid reservations release immediately; paid lessons become cancellation/refund requests. Only an administrator can record the actual completed refund. The app never claims to move money.
-- **Instructor:** sees only assigned confirmed/completed lessons and relevant student contact information. Can assess only their own completed-in-time lessons; scores and notes persist and appear in student progress.
-- **Admin:** manages real instructor accounts and vehicles; views bookings, records payments and refund receipts.
+| Path | Responsibility |
+| --- | --- |
+| `dist/app.mjs` | Application controller, forms and interactions |
+| `dist/auth-view.mjs`, `dist/layout.mjs` | Sign-in/account screens and shared portal layout |
+| `dist/router.mjs` | Role-scoped screen URLs, refresh and Back/Forward navigation |
+| `dist/workspace.mjs` | Complete role-specific RPC loading; stale refresh/sign-out response suppression |
+| `dist/controls.mjs` | Temporary action locking that preserves disabled controls |
+| `dist/mutations.mjs` | Single-write execution, uncertain-result reconciliation and stale-session suppression |
+| `dist/learner-state.mjs` | Pending-plan summary and learner next-step decisions |
+| `dist/recommendations.mjs` | Escaped learner suggestions, feedback controls and unavailable/complete states |
+| `dist/presentation.mjs` | Escaped views, navigation, progress and formatting |
+| `dist/portals/`, `dist/scheduling.mjs` | Role-specific views, teaching-hours editor and email-status screen |
+| `dist/pwa.mjs`, `dist/sw.js`, `dist/manifest.webmanifest` | Installation, offline status and public-shell caching |
+| `dist/checkout.mjs` | Razorpay SDK loading and database status polling |
+| `dist/api.mjs` | Supabase Auth session/refresh and authenticated RPC/Edge requests |
+| `dist/public-config.mjs` | Shared frontend/build public-key validation |
+| `dist/styles.css`, `dist/product.css` | Responsive presentation and accessibility |
+| `supabase/migrations/` | Append-only database history; the new migration repairs the product after 0004 |
+| `supabase/functions/_shared/payments.mjs` | Testable order and webhook handlers |
+| `supabase/functions/_shared/notifications.mjs` | Protected transactional email worker and deterministic message rendering |
+| `supabase/preflight.sql`, `supabase/verify.sql` | Read-only pre-release data and post-migration security checks |
+| `backend/schema.sql` | Historical initial schema; never reapply over the connected project |
+| `backend/bootstrap-admin.sql` | Owner-controlled initial admin access |
+| `tests/` | Database, upgrade, payment-handler, configuration and frontend tests |
+| `scripts/check.mjs` | Syntax checks for all JavaScript modules |
+| `scripts/audit-secrets.mjs` | Credential-pattern scan of source and reachable Git history; reports locations without values |
+| `render.yaml` | Static deployment, config injection, routing and security headers |
+| `API_CONTRACT.md` | Actual dispatcher and service-only payment API |
 
-Online Razorpay/UPI checkout is not connected and requires separate payment-provider configuration. No simulated checkout remains.
+Screen URLs use fragments such as `/#/payments` and `/#/book`; refreshing retains the screen and browser Back/Forward changes screens. The server-provided role determines the available screens. Unknown/cross-role links return to Overview; unapproved instructors remain on their review screen. Fragments contain screen names only, never account or payment details. Supabase confirmation/recovery fragments are consumed before screen routing starts.
 
-## Backend security and architecture
+Session refresh retains the current session after connection failures, throttling or server outages so a later request can retry. Rejected refresh credentials clear it. Responses from a previous sign-in/refresh cannot restore a signed-out session or erase a newer login. Workspace loading publishes all required data together and discards superseded responses.
 
-`public.drivex(action, payload)` is a restricted, security-invoker RPC entrypoint. It delegates to one authenticated dispatcher in the non-exposed `drivex_private` schema. The private security-definer function intentionally owns transactions spanning bookings and payments; it checks `auth.uid()` on every call and validates role and row ownership per action.
+Teaching-hours, school-email status and recommendation failures are isolated from core portal loading. Their screens display unavailable/retry states. They never substitute empty teaching schedules or invent delivery status. Local HTTP integration tests run the real client, dispatcher and database through pending purchases, edited teaching hours, booking, post-save read failure/reconciliation, completion and cancellation. The fixture serves service-worker, manifest and icon content types explicitly; this does not establish browser installation or hosted provider behavior.
 
-All tables have RLS enabled and browser roles have **no direct table privileges**. Privileged execution is granted only to authenticated users on the bounded dispatcher. The function uses an empty search path and schema-qualified objects. Roles are read from protected rows on every call, so no stale JWT role claims are used.
+## Backend boundary
 
-Expiration is evaluated on reads, availability and reservations. A periodic cleanup task is not required for correctness: overdue holds are ignored for availability and expired transactionally before new reservations. GiST exclusion constraints remain the final concurrency guard. Payment receipt replay is idempotent for an already-confirmed booking with the same reference.
+Every browser domain-data operation goes through `public.drivex(action,payload)`. The public function is a security-invoker wrapper around the private authorized dispatcher. Application tables have RLS and no direct browser privileges. Roles are read from protected profiles, not user-editable metadata or browser state.
 
-## Source layout
+Only server-side Edge Functions can register provider orders or reconcile payment events through their restricted service RPCs. Secrets remain in Supabase. Fresh signup metadata can request an instructor application; it cannot approve that application or grant administrator access.
 
-| Path                          | Responsibility                                           |
-| ----------------------------- | -------------------------------------------------------- |
-| `dist/app.mjs`                | Role-specific screens, forms, loading/empty/error states |
-| `dist/api.mjs`                | Supabase Auth and authenticated RPC client               |
-| `dist/config.mjs`             | Public project URL/publishable key                       |
-| `dist/styles.css`             | Responsive design                                        |
-| `backend/schema.sql`          | Real tables, transaction rules and authorization         |
-| `backend/bootstrap-admin.sql` | Explicit owner-controlled first-admin setup              |
-| `tests/database.test.mjs`     | PostgreSQL integration tests                             |
-
-## Validation
-
-10 passing test entries (one parent plus nine scenarios) execute the actual schema and functions in the PGlite PostgreSQL engine. Only the test harness creates isolated auth fixtures; these never ship as application records. Checks cover role escalation denial, empty initial state, instructor/vehicle provisioning, persistent reservations, overlap rejection, row privacy, direct-table denial, admin-only receipts, idempotency, feedback timing/ownership/range, refund workflow, expiry, and anonymous access rejection.
-
-JavaScript syntax checks also pass. Supabase-hosted Auth/email delivery, PostgREST grants in a live project, cross-session concurrency, browser visual QA, and WebMCP runtime support remain unverified until the project is connected. The app is not represented as a completed live service while configuration is missing.
+Existing `0001..0004` migrations are retained unchanged. The new migration preserves historical records, requires renewed instructor review, deactivates exact placeholder fleet entries and flags browser-activated payments for actual receipt review. Review these effects before deployment. Read `docs/RELEASE.md` before applying anything to the live project.

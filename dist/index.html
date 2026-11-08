@@ -9,14 +9,20 @@
       content="DriveX driving school: book lessons, manage your schedule, and track your progress."
     />
     <title>DriveX — Your driving journey</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <link
       rel="icon"
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23142921'/%3E%3Ctext x='9' y='29' font-size='28' font-family='Arial' font-weight='bold' fill='%23d4f575'%3ED%3C/text%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="product.css" />
   </head>
   <body>
+    <div id="connection-status" class="connection-status" role="status" aria-live="polite" hidden></div>
+    <button id="install-app" class="primary install-app" hidden>Install DriveX</button>
     <div id="app"></div>
     <dialog id="modal" aria-labelledby="modal-title"></dialog>
     <div id="toast" role="status" aria-live="polite"></div>
