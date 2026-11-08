@@ -1,10 +1,15 @@
+import {authView} from './auth-view.mjs';
+import {brand,workspaceView,pageTitle} from './layout.mjs';
+import {createRouter} from './router.mjs';
+import {createWorkspaceLoader} from './workspace.mjs';
+import {disableButtons} from './controls.mjs';
 import {learnerOverview,plansView,bookView} from './portals/learner.mjs';
 import {instructorOverview,learnersView} from './portals/instructor.mjs';
 import {instructorsView,fleetView,adminOverview} from './portals/admin.mjs';
 import {availabilityView,notificationsView,parseWorkingHours} from './scheduling.mjs';
 import {registerPwa} from './pwa.mjs';
 import { configured,signedIn,login,signup,logout,recover,changePassword,handleCallback,getCallbackError,rpc,invokeFunction } from './api.mjs';
-import { esc,money,today,intro,navigation,bookingsView,paymentsView,syllabusView } from './presentation.mjs';
+import { esc,money,today,intro,bookingsView,paymentsView,syllabusView } from './presentation.mjs';
 import { checkout } from './checkout.mjs';
 const $=s=>document.querySelector(s);
 let state=null, page='overview', filter='all', door='student', busy=false, course=[], payments=[], learners=[], metrics={}, times=[], slotError='', loadingSlots=false, slotRequest=0;
@@ -12,39 +17,30 @@ let draft={date:today(),time:'',vehicle:''};
 let hours=null,notices=null,selectedInstructor='';
 const recovery=handleCallback();
 const role=()=>state?.me?.role;
-const brand='<div class="brand"><div class="brandmark">D</div>Drive<span>X</span></div>';
+const router=createRouter({onChange:showPage});
+const workspace=createWorkspaceLoader({rpc,onLoad:applyWorkspace});
 function toast(message) { const t=$('#toast');t.textContent=message;t.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.style.display='none',7000); }
 function modal(title,body) { const m=$('#modal');m.innerHTML=`<div class="modal-top"><h2 id="modal-title">${esc(title)}</h2><button class="close" aria-label="Close dialog">×</button></div>${body}`;m.querySelector('.close').onclick=()=>m.close();if(!m.open)m.showModal(); }
 function errorMessage(error) { return error?.message||'Unable to complete this action. Please try again.'; }
-function clearState() {state=null;course=[];payments=[];learners=[];metrics={};times=[];hours=null;notices=null;selectedInstructor='';draft={date:today(),time:'',vehicle:''};page='overview';slotRequest++;}
-async function signOut() { try {await logout();} catch {} finally {clearState();$('#modal').close();auth();} }
+function clearState() {workspace.invalidate();state=null;course=[];payments=[];learners=[];metrics={};times=[];hours=null;notices=null;selectedInstructor='';draft={date:today(),time:'',vehicle:''};page='overview';slotRequest++;}
+async function signOut() { const request=logout();router.reset();clearState();$('#modal').close();auth();try {await request;} catch {} }
 function unavailable(error) {
   clearState();$('#app').innerHTML=`<main class="auth-panel"><section class="panel panel-pad">${brand}${intro('Unable to load DriveX',errorMessage(error))}<button class="primary" id="retry">Try again</button> <button class="secondary" id="logout">Sign out</button></section></main>`;
   $('#retry').onclick=()=>start();$('#logout').onclick=signOut;
 }
 async function reload() {
-  const next=await rpc('snapshot');
-  if(!next?.me || !navigation[next.me.role]) throw Error('The school account could not be loaded. Contact support.');
-  let nextCourse=[],nextPayments=[],nextLearners=[],nextMetrics={};
-  const pending=next.me.role==='instructor'&&next.me.approval_status!=='approved';
-  if(!pending) {
-    if(next.me.role==='student') [nextCourse,nextPayments,nextMetrics]=await Promise.all([rpc('my_lessons'),rpc('my_payments'),rpc('dashboard')]);
-    if(next.me.role==='instructor') [nextLearners,nextPayments,nextMetrics]=await Promise.all([rpc('instructor_learners'),rpc('instructor_earnings'),rpc('instructor_overview')]);
-    if(next.me.role==='admin') [nextCourse,nextPayments,nextMetrics]=await Promise.all([rpc('admin_lessons'),rpc('my_payments'),rpc('admin_overview')]);
-  }
-  state=next;course=nextCourse||[];payments=nextPayments||[];learners=nextLearners||[];metrics=nextMetrics||{};
-  if(!pending&&role()==='instructor')hours=await rpc('working_hours');
-  if(role()==='admin'){
-    if(!state.instructors.some(i=>i.id===selectedInstructor))selectedInstructor=state.instructors[0]?.id||'';
-    [hours,notices]=await Promise.all([selectedInstructor?rpc('working_hours',{instructor_id:selectedInstructor}):Promise.resolve(null),rpc('notification_status')]);
-  }
+  if(await workspace.load({selectedInstructor})&&page==='book')await availability();
+}
+function applyWorkspace(next) {
+  ({state,course,payments,learners,metrics,hours,notices,selectedInstructor}=next);
   if(!state.vehicles?.some(v=>v.id===draft.vehicle&&v.active)) draft.vehicle=state.vehicles?.find(v=>v.active)?.id||'';
-  if(!navigation[role()].some(([p])=>p===page))page='overview';
+  page=router.activate(role(),{pending:next.pending});
   render();
 }
 function auth(mode='login',message='') {
   const ready=configured();
-  $('#app').innerHTML=`<main class="auth-shell"><section class="auth-story">${brand}<div><div class="eyebrow">YOUR ROAD TO CONFIDENCE</div><h1>Learn the skills.<br>Own the road.</h1><p>Structured plans, guided practice and a clear view of your progress.</p></div><div class="plan-preview-pills"><span class="pill">10-Day · ₹1,500 · 10 credits</span><span class="pill">Monthly · ₹4,000 · 30 credits</span></div><small>DriveX Driving Academy</small></section><section class="auth-panel"><div class="auth-card">${!ready?intro('Setup required','The school needs to configure the service before you can sign in.'):`<div class="door-tabs"><button class="door-btn ${door==='student'?'active':''}" data-door="student">I'm a Learner</button><button class="door-btn ${door==='instructor'?'active':''}" data-door="instructor">I'm an Instructor</button></div>${intro(mode==='signup'?'Create your account':mode==='recover'?'Reset password':mode==='password'?'Choose a new password':'Welcome back',mode==='signup'&&door==='instructor'?'Your account will be reviewed before you can accept learners.':door==='instructor'?'Manage your learners and teaching schedule.':'Plan your lessons and see your progress.')}<form id="auth-form" class="modal-body">${mode==='signup'?`<label>Full name<input name="name" autocomplete="name" maxlength="100" required></label><label>Phone<input name="phone" type="tel" autocomplete="tel" maxlength="30" required></label><label>Account type<select name="role"><option value="student" ${door==='student'?'selected':''}>Learner</option><option value="instructor" ${door==='instructor'?'selected':''}>Instructor · approval required</option></select></label>`:''}${mode!=='password'?'<label>Email<input name="email" type="email" autocomplete="email" required></label>':''}${mode!=='recover'?`<label>Password<input name="password" type="password" minlength="8" autocomplete="${mode==='login'?'current-password':'new-password'}" required></label>`:''}<p class="error" id="auth-error" role="alert"></p><p role="status">${esc(message)}</p><button class="primary full">${mode==='signup'?'Create account':mode==='recover'?'Send reset link':mode==='password'?'Save password':'Sign in'}</button></form><div class="auth-links">${mode==='login'?'<button class="link" data-auth="signup">Create an account</button><button class="link" data-auth="recover">Forgot password?</button>':'<button class="link" data-auth="login">Back to sign in</button>'}</div>`}</div></section></main>`;
+  $('#app').innerHTML=authView({ready,mode,door,message});
+  document.title='Sign in · DriveX';
   document.querySelectorAll('[data-door]').forEach(b=>b.onclick=()=>{door=b.dataset.door;auth(mode);});
   document.querySelectorAll('[data-auth]').forEach(b=>b.onclick=()=>auth(b.dataset.auth));
   if(!ready)return;
@@ -76,10 +72,12 @@ function render() {
  else if(page==='instructors')body=instructorsView({state});
  else if(page==='fleet')body=fleetView({state});
  else body=adminOverview({metrics});
- $('#app').innerHTML=`<a class="skip-link" href="#main-content">Skip to content</a><div class="shell"><aside class="side">${brand}<small>${esc(r==='student'?'Learner':r)} portal</small>${!pending?`<nav class="nav" aria-label="Main navigation">${navigation[r].map(([p,label])=>`<button data-nav="${p}" class="${page===p?'active':''}" ${page===p?'aria-current="page"':''}>${label}</button>`).join('')}</nav>`:''}<div class="side-bottom"><p>${esc(state.me.name)}</p><button class="link" id="logout">Sign out</button></div></aside><main class="content" id="main-content">${body}<footer class="footer">DriveX · Guided learning, confident driving</footer></main></div>`;
+ $('#app').innerHTML=workspaceView({me:state.me,page,body,pending});
+ document.title=pending?'Instructor review · DriveX':pageTitle(r,page);
  bind();
 }
-async function navigate(next) {if(!navigation[role()].some(([p])=>p===next))return;page=next;filter='all';times=[];draft.time='';render();if(page==='book')await availability();$('#page-title')?.focus();window.scrollTo(0,0);}
+function navigate(next) {router.go(next);}
+async function showPage(next) {page=next;filter='all';times=[];draft.time='';slotError='';slotRequest++;render();if(page==='book')await availability();$('#page-title')?.focus();window.scrollTo(0,0);}
 async function availability() {
  const request=++slotRequest,values={date:draft.date,vehicle:draft.vehicle};times=[];draft.time='';slotError='';loadingSlots=true;render();
  try {if(!values.vehicle)throw Error('No active training vehicles. Contact the school.');const rows=await rpc('availability',values);if(request===slotRequest)times=rows||[];}
@@ -87,10 +85,10 @@ async function availability() {
  finally{if(request===slotRequest){loadingSlots=false;if(page==='book')render();}}
 }
 async function perform(action,payload,message) {
- if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);
- try {await rpc(action,payload);$('#modal').close();await reload();if(page==='book')await availability();if(message)toast(message);}
+ if(busy)return;busy=true;const restoreButtons=disableButtons(document);
+ try {await rpc(action,payload);$('#modal').close();await reload();if(message)toast(message);}
  catch(error){if($('#modal').open&&$('#modal .error'))$('#modal .error').textContent=errorMessage(error);else toast(errorMessage(error));}
- finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);if(state)render();}
+ finally{busy=false;restoreButtons();if(state)render();}
 }
 function formModal(title,fields,submit,callback,note='') {
  modal(title,`<form id="action-form" class="modal-body"><p class="sub">${esc(note)}</p>${fields}<p class="error" role="alert"></p><button class="primary">${esc(submit)}</button></form>`);

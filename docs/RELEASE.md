@@ -86,6 +86,8 @@ Server-created orders and provider capture state follow the [Razorpay integratio
 6. Mark theory as the learner and practical as the current instructor. Check another instructor cannot view/mark the learner's current progress or see their plan collections.
 7. Test admin receipt review and full-refund recording on an unused plan with an actual test refund reference. A refunded plan must remain closed on a webhook replay.
 8. Check all screens on phone and desktop, keyboard focus, dialog errors, loading states, network failure, empty fleet and no approved instructors. Check the deployed CSP permits checkout without allowing inline page scripts.
+9. Open a screen URL such as `/#/payments`, sign in, refresh and use Back/Forward. Check learner links cannot open admin screens and pending instructors cannot open teaching screens. Follow a real confirmation/recovery link to check Auth fragments are consumed before screen routing.
+10. Interrupt connectivity when a session needs refreshing, reconnect and retry. Sign out during a slow workspace refresh and ensure private content disappears immediately and never reappears. Repeat with a different account; no delayed response may overwrite the new account's screen.
 
 ## Render and publication
 

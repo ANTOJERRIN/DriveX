@@ -42,7 +42,11 @@ An isolated UI fixture is available with `node tests/browser-server.mjs` at `htt
 
 | Path | Responsibility |
 | --- | --- |
-| `dist/app.mjs` | Auth flow, role routing, state, forms and interactions |
+| `dist/app.mjs` | Application controller, forms and interactions |
+| `dist/auth-view.mjs`, `dist/layout.mjs` | Sign-in/account screens and shared portal layout |
+| `dist/router.mjs` | Role-scoped screen URLs, refresh and Back/Forward navigation |
+| `dist/workspace.mjs` | Complete role-specific RPC loading; stale refresh/sign-out response suppression |
+| `dist/controls.mjs` | Temporary action locking that preserves disabled controls |
 | `dist/presentation.mjs` | Escaped views, navigation, progress and formatting |
 | `dist/portals/`, `dist/scheduling.mjs` | Role-specific views, teaching-hours editor and email-status screen |
 | `dist/pwa.mjs`, `dist/sw.js`, `dist/manifest.webmanifest` | Installation, offline status and public-shell caching |
@@ -61,6 +65,10 @@ An isolated UI fixture is available with `node tests/browser-server.mjs` at `htt
 | `scripts/audit-secrets.mjs` | Credential-pattern scan of source and reachable Git history; reports locations without values |
 | `render.yaml` | Static deployment, config injection, routing and security headers |
 | `API_CONTRACT.md` | Actual dispatcher and service-only payment API |
+
+Screen URLs use fragments such as `/#/payments` and `/#/book`; refreshing retains the screen and browser Back/Forward changes screens. The server-provided role determines the available screens. Unknown/cross-role links return to Overview; unapproved instructors remain on their review screen. Fragments contain screen names only, never account or payment details. Supabase confirmation/recovery fragments are consumed before screen routing starts.
+
+Session refresh retains the current session after connection failures, throttling or server outages so a later request can retry. Rejected refresh credentials clear it. Responses from a previous sign-in/refresh cannot restore a signed-out session or erase a newer login. Workspace loading publishes all required data together and discards superseded responses.
 
 ## Backend boundary
 

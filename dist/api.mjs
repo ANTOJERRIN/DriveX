@@ -3,7 +3,7 @@ import { validatePublicConfig } from './public-config.mjs';
 
 // Dependency injection is used only by isolated tests. The application uses browser defaults.
 export function createApi({ config = publicConfig, fetcher = (...args) => fetch(...args), storage: suppliedStorage, location: suppliedLocation, history: suppliedHistory } = {}) {
-  let session = null, refreshing = null, callbackError = '';
+  let session = null, refreshing = null, callbackError = '', sessionEpoch = 0;
   let storage = suppliedStorage;
   if (storage === undefined) { try { storage = globalThis.sessionStorage; } catch { storage = null; } }
   const storageKey = 'drivex-auth-v1';
@@ -45,24 +45,44 @@ export function createApi({ config = publicConfig, fetcher = (...args) => fetch(
   }
   async function token() {
     if (!session) throw Error('Please sign in.');
+    const epoch = sessionEpoch;
     if (session.expires_at * 1000 < Date.now() + 60000) {
-      if (!refreshing) refreshing = request('/auth/v1/token?grant_type=refresh_token', { refresh_token: session.refresh_token })
-        .then(save).catch(error => { save(null); throw error; }).finally(() => refreshing = null);
-      await refreshing;
+      if (!refreshing || refreshing.epoch !== epoch) {
+        const flight = {epoch};
+        flight.promise = request('/auth/v1/token?grant_type=refresh_token', { refresh_token: session.refresh_token })
+          .then(value => {
+            if (epoch !== sessionEpoch) throw Error('Your session changed. Please sign in again.');
+            save(value);
+          }).catch(error => {
+            // Connectivity and service failures are retryable. Only an invalid session signs out.
+            if (epoch === sessionEpoch && [400,401,403].includes(error.status)) { sessionEpoch++; save(null); }
+            throw error;
+          }).finally(() => { if (refreshing === flight) refreshing = null; });
+        refreshing = flight;
+      }
+      await refreshing.promise;
     }
+    if (epoch !== sessionEpoch) throw Error('Your session changed. Please sign in again.');
     if (!session?.access_token) throw Error('Your session expired. Please sign in again.');
     return session.access_token;
   }
-  async function login(email, password) { save(await request('/auth/v1/token?grant_type=password', { email, password })); }
+  async function login(email, password) {
+    const epoch = ++sessionEpoch;
+    const value = await request('/auth/v1/token?grant_type=password', { email, password });
+    if (epoch !== sessionEpoch) throw Error('Your session changed. Please sign in again.');
+    save(value);
+  }
   async function signup(name, email, password, phone, role = 'student', specialty = '') {
+    const epoch = ++sessionEpoch;
     const value = await request('/auth/v1/signup?redirect_to=' + encodeURIComponent(currentLocation().origin + '/'), { email, password, data: { name, phone, role, specialty } });
+    if (epoch !== sessionEpoch) throw Error('Your session changed. Please sign in again.');
     if (value?.access_token) save(value);
     return !!value?.access_token;
   }
   async function logout() {
     const existingToken = session?.access_token;
-    try { if (existingToken) await request('/auth/v1/logout', undefined, { token: existingToken }); }
-    finally { save(null); }
+    sessionEpoch++; save(null);
+    if (existingToken) await request('/auth/v1/logout', undefined, { token: existingToken });
   }
   const recover = email => request('/auth/v1/recover?redirect_to=' + encodeURIComponent(currentLocation().origin + '/'), { email });
   const changePassword = async password => request('/auth/v1/user', { password }, { method: 'PUT', token: await token() });
@@ -75,6 +95,7 @@ export function createApi({ config = publicConfig, fetcher = (...args) => fetch(
       return false;
     }
     if (hash.has('access_token') && hash.has('refresh_token')) {
+      sessionEpoch++;
       save({ access_token: hash.get('access_token'), refresh_token: hash.get('refresh_token'), expires_in: Number(hash.get('expires_in')) || 3600 });
       currentHistory()?.replaceState(null, '', loc.pathname);
       return hash.get('type') === 'recovery';
