@@ -10,7 +10,7 @@ import {instructorOverview,learnersView} from './portals/instructor.mjs';
 import {instructorsView,fleetView,adminOverview} from './portals/admin.mjs';
 import {availabilityView,notificationsView,parseWorkingHours} from './scheduling.mjs';
 import {registerPwa} from './pwa.mjs';
-import { configured,signedIn,login,signup,logout,recover,changePassword,handleCallback,getCallbackError,rpc,invokeFunction } from './api.mjs';
+import { usingNeon,restoreSession,configured,signedIn,login,signup,logout,recover,changePassword,handleCallback,getCallbackError,rpc,invokeFunction } from './api.mjs';
 import { esc,money,today,intro,bookingsView,paymentsView,syllabusView } from './presentation.mjs';
 import { checkout } from './checkout.mjs';
 const $=s=>document.querySelector(s);
@@ -44,7 +44,7 @@ function applyWorkspace(next) {
 }
 function auth(mode='login',message='') {
   const ready=configured();
-  $('#app').innerHTML=authView({ready,mode,door,message});
+  $('#app').innerHTML=authView({ready,mode,door,message,usingNeon});
   document.title='Sign in · DriveX';
   document.querySelectorAll('[data-door]').forEach(b=>b.onclick=()=>{door=b.dataset.door;auth(mode);});
   document.querySelectorAll('[data-auth]').forEach(b=>b.onclick=()=>auth(b.dataset.auth));
@@ -125,6 +125,7 @@ function formModal(title,fields,submit,callback,note='') {
  $('#action-form').onsubmit=event=>{event.preventDefault();if(mutations.blocked)return;callback(new FormData(event.currentTarget));};
 }
 async function pay(id) {
+ if(usingNeon){toast('Contact the school to pay. An administrator will record your receipt.');return;}
  if(mutations.blocked)return;
  toast('Opening secure checkout...');
  return mutate(()=>checkout(id,{invokeFunction,rpc,onPending:()=>toast('Payment submitted. Waiting for server confirmation...')}),{message:'Payment received. Your plan is active.'});
@@ -149,7 +150,7 @@ function bind() {
  if($('#reserve'))$('#reserve').onclick=()=>perform('reserve',{...draft},'Lesson reserved. Your credit is used after completion.');
  document.querySelectorAll('[data-enroll]').forEach(b=>b.onclick=()=>{
   const plan=state.plans.find(p=>p.id===b.dataset.enroll);
-  formModal('Choose your instructor',`<p>${esc(plan.name)} · ${money(plan.price_inr)}</p><label>Instructor<select name="instructor_id" required><option value="">Select an approved instructor</option>${state.instructors.map(i=>`<option value="${esc(i.id)}">${esc(i.name)} · ${esc(i.specialty)}</option>`).join('')}</select></label>`,'Continue to payment',async f=>{
+  formModal('Choose your instructor',`<p>${esc(plan.name)} · ${money(plan.price_inr)}</p><label>Instructor<select name="instructor_id" required><option value="">Select an approved instructor</option>${state.instructors.map(i=>`<option value="${esc(i.id)}">${esc(i.name)} · ${esc(i.specialty)}</option>`).join('')}</select></label>`,usingNeon?'Request enrollment':'Continue to payment',async f=>{
    const outcome=await perform('enroll',{plan_id:plan.id,instructor_id:f.get('instructor_id')},'');
    if(outcome.status==='saved')await pay(outcome.value.enrollment_id);
   },'Your plan starts only after payment is received.');
@@ -168,8 +169,9 @@ function bind() {
  if($('#add-vehicle'))$('#add-vehicle').onclick=()=>formModal('Add training vehicle','<label>Vehicle name<input name="name" maxlength="100" required></label><label>Registration<input name="reg" minlength="3" maxlength="30" required></label><label>Transmission<select name="transmission"><option>Manual</option><option>Automatic</option></select></label>','Add vehicle',f=>perform('add_vehicle',Object.fromEntries(f),'Vehicle added.'));
 }
 async function start() {
- if(!configured()||!signedIn()){auth('login',getCallbackError());return;}
  if(recovery){auth('password');return;}
+ if(restoreSession){try{await restoreSession();}catch(error){auth('login',errorMessage(error));return;}}
+ if(!configured()||!signedIn()){auth('login',getCallbackError());return;}
  $('#app').innerHTML='<main class="empty" role="status">Loading your DriveX workspace…</main>';
  try{await reload();}catch(error){unavailable(error);}
 }
