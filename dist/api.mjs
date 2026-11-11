@@ -1,3 +1,4 @@
+import { createNeonApi } from './neon-api.mjs';
 import { config as publicConfig } from './config.mjs';
 import { validatePublicConfig } from './public-config.mjs';
 
@@ -107,4 +108,5 @@ export function createApi({ config = publicConfig, fetcher = (...args) => fetch(
   return { configured, signedIn, login, signup, logout, recover, changePassword, handleCallback, getCallbackError: () => callbackError, rpc, invokeFunction };
 }
 
-export const { configured, signedIn, login, signup, logout, recover, changePassword, handleCallback, getCallbackError, rpc, invokeFunction } = createApi();
+export const usingNeon = publicConfig.provider === "neon";
+export const { restoreSession, configured, signedIn, login, signup, logout, recover, changePassword, handleCallback, getCallbackError, rpc, invokeFunction } = usingNeon ? createNeonApi() : createApi();

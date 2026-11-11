@@ -8,7 +8,7 @@ async function files(directory) {
  }
  return result;
 }
-const paths=(await Promise.all(['dist','scripts','tests','supabase/functions/_shared'].map(files))).flat();
+const paths=(await Promise.all(['dist','backend/neon','scripts','tests','supabase/functions/_shared'].map(files))).flat();
 for(const path of paths) {
  const result=spawnSync(process.execPath,['--check',path],{encoding:'utf8'});
  if(result.status!==0){process.stderr.write(result.stderr);process.exit(result.status||1);}
