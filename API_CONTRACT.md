@@ -1,6 +1,23 @@
 # DriveX API contract
 
-Browser domain-data calls use `POST /rest/v1/rpc/drivex` with an authenticated bearer JWT and JSON `{ "action": "...", "payload": {} }`. `public.drivex(text,jsonb)` is a security-invoker wrapper; the private security-definer dispatcher enforces identity, protected role and ownership. Browsers have no direct table access. Stored role `student` means learner in the UI.
+The default Neon runtime uses `POST /api/drivex` with a same-origin session cookie
+and JSON `{ "action": "...", "payload": {} }`. The server checks the verified
+Neon Auth session, maps its provider subject to the local UUID and calls
+`public.drivex(text,jsonb)` within that transaction. This is a security-invoker
+wrapper; the private security-definer dispatcher enforces identity, protected
+role and ownership. Browsers have no direct table access. Stored role `student`
+means learner in the UI. The legacy Supabase fixtures use `/rest/v1/rpc/drivex`;
+that transport is not the default production runtime.
+
+Neon routes: `/api/auth/*` proxies the explicitly supported Auth operations;
+`POST /api/create-order` requires the verified owner session;
+`POST /api/razorpay-webhook` verifies the raw-body HMAC;
+`POST /api/notification-worker` requires the dedicated worker bearer token.
+Only these two machine endpoints bypass the browser Origin requirement.
+Payment/notification service RPCs use a separate restricted worker database
+login; secrets and database URLs never reach the browser. Shared Edge handler
+descriptions below retain their original Supabase paths for legacy deployments;
+the same handler logic runs on the Neon paths above using direct RPC adapters.
 
 Pending/rejected instructors may call only `me` or `snapshot`, which return `{me}`. All other instructor capabilities require `approval_status = approved`. UUID fields and integer score fields are validated by PostgreSQL casts and constraints as well as domain checks. Empty collections return arrays, not fabricated records.
 
@@ -140,6 +157,30 @@ These actions use the same authenticated `public.drivex` entry point. The prior 
 | `retry_notification` | Admin | `{id}` | `{id,status:"pending"}`; explicit reset for a failed job; changed-recipient failures require reconciliation and cannot be retried this way |
 
 New instructor profiles receive the default seven-day teaching week. Blocked dates cause a specific validation error for learner availability/reservation. A closed weekday returns `[]`. Schedule changes and reservations coordinate through a lock on the instructor profile; existing booking exclusion constraints are retained.
+
+## RPC request limits
+
+The firewall requires an authenticated account with a stored profile, an action
+name of 2–64 letters/digits/underscores, and an object payload of at most 65,536
+UTF-8 bytes in its JSONB text representation. Domain authorization still runs in
+the dispatcher after inspection.
+
+Each account/action bucket allows 60 committed requests per 60 seconds for
+`enroll`, `reserve`, `cancel_booking` and `recommendation_feedback`, and 1,200
+for other actions. The limit update is atomic, including simultaneous first
+requests. Rejected transactions roll back their writes and counters. These
+limits do not replace infrastructure protection against failed-request floods.
+Denied requests raise `RATE_LIMIT_EXCEEDED`; clients must not automatically
+replay writes. Denials emit a Postgres `LOG` diagnostic without request payloads
+or credentials. Hosted collection and retention remain an environment check.
+
+`firewall_status` accepts `{}` and is admin-only. It returns `status`,
+`rate_limits_tracked`, `counter_scope:"committed_requests"`,
+`denial_log:"postgres"`, and the historical `violations_logged` and
+`recent_violations` fields. Historical table rows are not a count of rejected
+RPC transactions: a table insert followed by an exception rolls back. The
+synthetic `firewall_test_rate_limit` action is removed by the reliability
+migration. No browser can query firewall tables or call private helpers.
 
 ## Learning recommendations and hashing
 

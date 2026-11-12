@@ -4,14 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "python -m http.server 3000 --directory dist",
-    "dev": "python -m http.server 3000 --directory dist",
+    "start": "node --env-file-if-exists=.env backend/neon/server.mjs",
+    "dev": "node --env-file-if-exists=.env backend/neon/server.mjs",
     "test": "node --test tests/*.test.mjs",
-    "build": "node scripts/generate-config.mjs",
+    "build": "node scripts/generate-config.mjs --neon",
     "check": "node scripts/check.mjs",
+    "deploy:smoke": "node scripts/check-deployment.mjs",
     "audit:secrets": "node scripts/audit-secrets.mjs",
-    "db:push": "supabase db push",
-    "db:diff": "supabase db diff"
+    "db:plan": "node --env-file-if-exists=.env backend/neon/migrate.mjs --dry-run",
+    "db:migrate": "node --env-file-if-exists=.env backend/neon/migrate.mjs --apply",
+    "start:neon": "node --env-file-if-exists=.env backend/neon/server.mjs",
+    "notifications:run": "node --env-file-if-exists=.env backend/neon/run-notifications.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.14"

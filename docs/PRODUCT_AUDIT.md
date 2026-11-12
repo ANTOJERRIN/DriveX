@@ -1,5 +1,9 @@
 # DriveX product audit
 
+Historical Supabase implementation audit. The owner's subsequent Neon migration
+supersedes its hosting/configuration status. See [the current Neon guide](../docs-neon-migration.md)
+for the active Node/Neon runtime, migration limits and release acceptance.
+
 Scope: the latest `prompts/v2/B0..B8` pack, with `prompts resources/new` as its duplicate. The user subsequently requested the remaining abilities from `prompts resources/04..06`: notifications, custom working hours and PWA. Those features are now implemented locally. The existing Supabase, vanilla JavaScript and Render architecture is retained; no Higgsfield-hosted copy is created.
 
 ## Inventory and changes

@@ -1,11 +1,12 @@
-# Select this Blueprint path for a separate staging service. Keep the static site live.
+﻿# Provision a Node web service for Neon; do not replace an existing live static site in place.
 services:
   - type: web
     name: drivex-neon-staging
     runtime: node
     plan: free
-    buildCommand: npm ci && npm run check
-    startCommand: node backend/neon/server.mjs
+    autoDeployTrigger: off
+    buildCommand: npm ci && npm run build && npm run check
+    startCommand: npm start
     healthCheckPath: /healthz
     envVars:
       - key: NODE_VERSION
@@ -16,3 +17,5 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+# Add NEON_SERVICE_DATABASE_URL, Razorpay and Resend settings privately after
+# provisioning restricted worker access. Never deploy MIGRATION_DATABASE_URL.
