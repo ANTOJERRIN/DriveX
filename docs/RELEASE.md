@@ -1,5 +1,23 @@
 # DriveX release procedure
 
+## 2026-11-12 continuation
+
+The current continuation plan is [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+The connected DriveX project still reported `INACTIVE`; a restoration attempt
+was rejected for the owner's active free-project limit. Resolve capacity for
+this dedicated project before hosted deployment. Do not change unrelated
+projects automatically. The browser access host and native pipe were unavailable
+in this session, so visual/mobile acceptance remains NOT VERIFIED.
+
+New migration `20261112152548_firewall_reliability.sql` corrects the latest
+firewall without editing its original migration. It uses an atomic limit update,
+removes the synthetic test action, requires a stored profile, and sends denial
+diagnostics to Postgres logs. SQL exceptions roll back table inserts, so the
+historical audit fields cannot count denied RPCs. Inspect hosted logs explicitly
+after migration; local PGlite tests do not establish hosted log retention or
+concurrent multi-connection behavior. See the RPC limit contract in
+[API_CONTRACT.md](../API_CONTRACT.md).
+
 The source changes are not a live deployment. Do not publish the new frontend against the old dispatcher. Restore backend access, establish the actual migration history, apply the new backend, configure/test payments and notifications, and then release the frontend. [ADDITIONAL_ABILITIES.md](ADDITIONAL_ABILITIES.md) covers teaching schedules, email/cron setup and offline installation.
 
 ## Current external blockers
