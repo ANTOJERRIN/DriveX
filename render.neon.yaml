@@ -1,0 +1,18 @@
+# Select this Blueprint path for a separate staging service. Keep the static site live.
+services:
+  - type: web
+    name: drivex-neon-staging
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run check
+    startCommand: node backend/neon/server.mjs
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: APP_ORIGIN
+        sync: false
+      - key: NEON_AUTH_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
