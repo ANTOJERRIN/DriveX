@@ -3,11 +3,10 @@ import {readFile} from 'node:fs/promises';
 import {resolve,extname,sep} from 'node:path';
 import pg from 'pg';
 import {dispatch} from './gateway.mjs';
+import {readNeonConfig} from './config.mjs';
 
-const site=new URL(process.env.APP_ORIGIN);
-const auth=new URL(process.env.NEON_AUTH_URL);
-if(!process.env.DATABASE_URL||auth.protocol!=='https:'||!auth.hostname.endsWith('.neon.tech')||site.protocol!=='https:'||site.href!==site.origin+'/')throw Error('Set DATABASE_URL, HTTPS APP_ORIGIN and NEON_AUTH_URL.');
-const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,max:5});
+const {site,auth,databaseUrl}=readNeonConfig();
+const pool=new pg.Pool({connectionString:databaseUrl,max:5});
 const root=resolve('dist');
 const types={'.html':'text/html; charset=utf-8','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.webmanifest':'application/manifest+json'};
 const routes={'sign-up/email':'POST','sign-in/email':'POST','sign-out':'POST','get-session':'GET','request-password-reset':'POST','reset-password':'POST'};
