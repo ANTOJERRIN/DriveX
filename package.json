@@ -9,6 +9,7 @@
     "test": "node --test tests/*.test.mjs",
     "build": "node scripts/generate-config.mjs --neon",
     "check": "node scripts/check.mjs",
+    "deploy:smoke": "node scripts/check-deployment.mjs",
     "audit:secrets": "node scripts/audit-secrets.mjs",
     "db:plan": "node --env-file-if-exists=.env backend/neon/migrate.mjs --dry-run",
     "db:migrate": "node --env-file-if-exists=.env backend/neon/migrate.mjs --apply",

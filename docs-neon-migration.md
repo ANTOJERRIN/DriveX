@@ -64,10 +64,13 @@ owner, using the local `auth.users.id` and `backend/bootstrap-admin.sql`.
 
 ## Render service
 
-Use `render.yaml` (or identical `render.neon.yaml`) for a **new Node service**.
-Do not attempt to change the existing live static site's runtime in place.
-The blueprint uses a free staging service and manual deploys. Database migrations
-are operator commands, never part of the build or startup.
+Use `render.yaml` (or identical `render.neon.yaml`) for a **new Node service**
+when staging is needed. The blueprint uses a free staging service and manual
+deploys. For the existing production Node web service, follow the
+[sign-in cutover procedure](docs-sign-in-deployment.md) to retain its URL and
+replace any legacy static-server commands. A Render static-site resource needs
+a separate Node web service. Database migrations are operator commands, never
+part of the build or startup.
 
 Required settings: `APP_ORIGIN` (exact HTTPS origin), `NEON_AUTH_URL` (the
 branch's full Auth base URL), `DATABASE_URL`. Optional payment/email features

@@ -16,6 +16,9 @@ Supabase accounts and records have not been imported. Read the
 production traffic. Existing SQL migrations are preserved in
 `supabase/migrations/`; the runtime has no requirement for a Supabase project.
 
+For the production sign-in deployment settings and endpoint checks, follow the
+[sign-in deployment procedure](docs-sign-in-deployment.md).
+
 ## Development and checks
 
 Use Node 22+. Copy `.env.example` to the ignored `.env` and configure Neon
