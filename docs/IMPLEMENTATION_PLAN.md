@@ -1,5 +1,8 @@
 # DriveX implementation plan
 
+The owner's subsequent Neon migration request supersedes this plan's Supabase
+hosting assumptions. Continue with [the Neon migration guide](../docs-neon-migration.md).
+
 Reviewed on 2026-11-12 against GitHub `ANTOJERRIN/DriveX`, feature branch
 `feat/drivex-product-completion`, head `e4de51e`.
 

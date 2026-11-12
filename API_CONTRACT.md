@@ -1,6 +1,23 @@
 # DriveX API contract
 
-Browser domain-data calls use `POST /rest/v1/rpc/drivex` with an authenticated bearer JWT and JSON `{ "action": "...", "payload": {} }`. `public.drivex(text,jsonb)` is a security-invoker wrapper; the private security-definer dispatcher enforces identity, protected role and ownership. Browsers have no direct table access. Stored role `student` means learner in the UI.
+The default Neon runtime uses `POST /api/drivex` with a same-origin session cookie
+and JSON `{ "action": "...", "payload": {} }`. The server checks the verified
+Neon Auth session, maps its provider subject to the local UUID and calls
+`public.drivex(text,jsonb)` within that transaction. This is a security-invoker
+wrapper; the private security-definer dispatcher enforces identity, protected
+role and ownership. Browsers have no direct table access. Stored role `student`
+means learner in the UI. The legacy Supabase fixtures use `/rest/v1/rpc/drivex`;
+that transport is not the default production runtime.
+
+Neon routes: `/api/auth/*` proxies the explicitly supported Auth operations;
+`POST /api/create-order` requires the verified owner session;
+`POST /api/razorpay-webhook` verifies the raw-body HMAC;
+`POST /api/notification-worker` requires the dedicated worker bearer token.
+Only these two machine endpoints bypass the browser Origin requirement.
+Payment/notification service RPCs use a separate restricted worker database
+login; secrets and database URLs never reach the browser. Shared Edge handler
+descriptions below retain their original Supabase paths for legacy deployments;
+the same handler logic runs on the Neon paths above using direct RPC adapters.
 
 Pending/rejected instructors may call only `me` or `snapshot`, which return `{me}`. All other instructor capabilities require `approval_status = approved`. UUID fields and integer score fields are validated by PostgreSQL casts and constraints as well as domain checks. Empty collections return arrays, not fabricated records.
 
