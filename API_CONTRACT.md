@@ -141,6 +141,30 @@ These actions use the same authenticated `public.drivex` entry point. The prior 
 
 New instructor profiles receive the default seven-day teaching week. Blocked dates cause a specific validation error for learner availability/reservation. A closed weekday returns `[]`. Schedule changes and reservations coordinate through a lock on the instructor profile; existing booking exclusion constraints are retained.
 
+## RPC request limits
+
+The firewall requires an authenticated account with a stored profile, an action
+name of 2–64 letters/digits/underscores, and an object payload of at most 65,536
+UTF-8 bytes in its JSONB text representation. Domain authorization still runs in
+the dispatcher after inspection.
+
+Each account/action bucket allows 60 committed requests per 60 seconds for
+`enroll`, `reserve`, `cancel_booking` and `recommendation_feedback`, and 1,200
+for other actions. The limit update is atomic, including simultaneous first
+requests. Rejected transactions roll back their writes and counters. These
+limits do not replace infrastructure protection against failed-request floods.
+Denied requests raise `RATE_LIMIT_EXCEEDED`; clients must not automatically
+replay writes. Denials emit a Postgres `LOG` diagnostic without request payloads
+or credentials. Hosted collection and retention remain an environment check.
+
+`firewall_status` accepts `{}` and is admin-only. It returns `status`,
+`rate_limits_tracked`, `counter_scope:"committed_requests"`,
+`denial_log:"postgres"`, and the historical `violations_logged` and
+`recent_violations` fields. Historical table rows are not a count of rejected
+RPC transactions: a table insert followed by an exception rolls back. The
+synthetic `firewall_test_rate_limit` action is removed by the reliability
+migration. No browser can query firewall tables or call private helpers.
+
 ## Learning recommendations and hashing
 
 | Action | Roles | Payload | Response / rules |
