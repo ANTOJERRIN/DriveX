@@ -1,31 +1,21 @@
+﻿# Provision a Node web service for Neon; do not replace an existing live static site in place.
 services:
   - type: web
-    name: drivex
-    runtime: static
-    buildCommand: npm ci && node scripts/generate-config.mjs
-    staticPublishPath: dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    headers:
-      - path: /sw.js
-        name: Cache-Control
-        value: no-cache
-      - path: /manifest.webmanifest
-        name: Content-Type
-        value: application/manifest+json
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
-      - path: /*
-        name: Referrer-Policy
-        value: strict-origin-when-cross-origin
-      - path: /*
-        name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self' https://checkout.razorpay.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.razorpay.com https://lumberjack.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; frame-src https://api.razorpay.com https://checkout.razorpay.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';"
+    name: drivex-neon-staging
+    runtime: node
+    plan: free
+    autoDeployTrigger: off
+    buildCommand: npm ci && npm run build && npm run check
+    startCommand: npm start
+    healthCheckPath: /healthz
     envVars:
-      - key: SUPABASE_URL
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: APP_ORIGIN
         sync: false
-      - key: SUPABASE_PUBLISHABLE_KEY
+      - key: NEON_AUTH_URL
         sync: false
+      - key: DATABASE_URL
+        sync: false
+# Add NEON_SERVICE_DATABASE_URL, Razorpay and Resend settings privately after
+# provisioning restricted worker access. Never deploy MIGRATION_DATABASE_URL.
