@@ -8,7 +8,7 @@ test('DriveX full plan lifecycle and authorization with every migration',async t
  const h=await database(),{db,as,paid,enroll,vehicle}=h;t.after(()=>db.close());
  let enrollment,booking;
  await t.test('all migrations load, prices are server controlled and sample fleet stays inactive',async()=>{
-  assert.equal(h.migrations.length,11);
+  assert.equal(h.migrations.length,12);
   const plans=await as('student','plans_list');assert.deepEqual(plans.map(p=>[p.price_inr,p.lesson_credits]),[[1500,10],[4000,30]]);
   const snap=await as('student','snapshot');assert.equal(snap.bookings.length,0);assert.equal(snap.vehicles.length,1);assert.equal(snap.vehicles[0].id,vehicle);
   await db.exec('reset role');
