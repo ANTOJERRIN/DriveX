@@ -96,3 +96,16 @@ worker tokens and database URLs stay in server environment variables.
 
 The older Supabase client/fixtures are retained for regression coverage and
 historical compatibility. They are not selected by the default Neon build.
+
+## Waterflow UI
+
+The aqua glass theme is authored in `ui/waterflow.css` with Tailwind CSS and
+compiled locally to `dist/waterflow.css`. Run `npm run build` after styling edits;
+the generated stylesheet is checked in for static previews and offline use.
+Tailwind's reset is omitted to preserve the app's existing form semantics.
+
+Run `npm run test:ui` for the isolated Chrome responsive suite (320, 390, 768 and
+1440px across all three portals). It uses local fixture accounts and never calls
+hosted auth, databases or payment services. Windows Chrome/Edge is detected;
+else install Playwright Chromium with `npx playwright install chromium`, or set
+`CHROME_PATH`. Screenshots are saved to ignored `artifacts/ui/`.

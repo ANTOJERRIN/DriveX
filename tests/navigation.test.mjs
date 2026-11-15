@@ -61,7 +61,7 @@ test('auth screens cover account creation, recovery, setup and escaped status me
 
 test('workspace chrome keeps role navigation, pending access and page titles separate from page content',()=>{
  const html=workspaceView({me:{role:'student',name:'<script>private</script>'},page:'payments',body:'<section>Receipts</section>'});
- assert.match(html,/aria-current="page">Payments/);assert.ok(!html.includes('<script>'));assert.ok(!html.includes('data-nav="fleet"'));assert.match(html,/<section>Receipts<\/section>/);
+ assert.match(html,/aria-current="page"><svg[^>]*aria-hidden="true">.*?<\/svg><span>Payments<\/span>/);assert.ok(!html.includes('<script>'));assert.ok(!html.includes('data-nav="fleet"'));assert.match(html,/<section>Receipts<\/section>/);
  const pending=workspaceView({me:{role:'instructor',name:'Applicant'},page:'overview',pending:true,body:'Waiting'});
  assert.ok(!pending.includes('<nav'));assert.match(pending,/id="logout"/);
  assert.equal(pageTitle('student','payments'),'Payments · DriveX');assert.equal(pageTitle('admin','fleet'),'Training fleet · DriveX');

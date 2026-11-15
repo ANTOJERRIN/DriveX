@@ -1,6 +1,6 @@
 /* Cache only this public shell. Auth, config, application modules and API responses never enter this cache. */
-const CACHE='drivex-shell-v1';
-const ASSETS=['/offline.html','/styles.css','/product.css','/icons/icon.svg','/icons/icon-180.png','/icons/icon-192.png','/icons/icon-512.png'];
+const CACHE='drivex-shell-v2';
+const ASSETS=['/offline.html','/styles.css','/product.css','/waterflow.css','/icons/icon.svg','/icons/icon-180.png','/icons/icon-192.png','/icons/icon-512.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('drivex-shell-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{
