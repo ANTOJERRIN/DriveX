@@ -20,7 +20,7 @@ export function notificationMessage(delivery,appUrl='') {
  if(appUrl)text+=`\n\nOpen DriveX for the latest status: ${appUrl}`;
  return {subject:subjects[delivery.event],text:text+'\n\nDriveX Driving Academy'};
 }
-export function notificationWorker({env,fetcher=fetch}) {
+export function notificationWorker({env,fetcher=fetch,queueRpc}) {
  return async req=>{
   if(req.method!=='POST')return json({error:'Method not allowed.'},405);
   const token=env('NOTIFICATION_WORKER_TOKEN')||'';
@@ -28,12 +28,12 @@ export function notificationWorker({env,fetcher=fetch}) {
   if(!(await equalToken(req.headers.get('Authorization'),`Bearer ${token}`)))return json({error:'Unauthorized.'},401);
   const base=env('SUPABASE_URL'),service=env('SUPABASE_SERVICE_ROLE_KEY'),mailKey=env('RESEND_API_KEY'),from=env('RESEND_FROM');
   const appUrl=env('DRIVEX_APP_URL')||'';
-  if(!base||!service||!mailKey||!from||/[\r\n]/.test(from)||!from.includes('@')|| (appUrl&&!/^https:\/\/[^\s]+$/.test(appUrl)))return json({error:'Notification delivery is not configured.'},503);
-  const rpc=async(action,payload={})=>{
+  if((!queueRpc&&(!base||!service))||!mailKey||!from||/[\r\n]/.test(from)||!from.includes('@')|| (appUrl&&!/^https:\/\/[^\s]+$/.test(appUrl)))return json({error:'Notification delivery is not configured.'},503);
+  const rpc=queueRpc|| (async(action,payload={})=>{
    const response=await fetcher(base+'/rest/v1/rpc/drivex_notification_jobs',{method:'POST',headers:{apikey:service,Authorization:'Bearer '+service,'Content-Type':'application/json'},body:JSON.stringify({action,payload}),signal:AbortSignal.timeout(10000)});
    if(!response.ok)throw Error('Notification queue unavailable.');
    return response.json();
-  };
+  });
   try {
    const jobs=await rpc('claim');
    if(!Array.isArray(jobs)||jobs.length>10)throw Error('Invalid queue response.');

@@ -33,4 +33,12 @@ union all select 'recommendation helpers cannot bypass dispatcher',not has_funct
  and not has_function_privilege('anon','drivex_private.dispatch_before_recommendations(text,jsonb)','EXECUTE')
 union all select 'core SHA-256 matches standard test vector',encode(sha256(convert_to('abc','UTF8')),'hex')='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
 union all select 'portal integration cannot bypass dispatcher',not has_function_privilege('authenticated','drivex_private.dispatch_before_portal_integration(text,jsonb)','EXECUTE')
- and not has_function_privilege('anon','drivex_private.dispatch_before_portal_integration(text,jsonb)','EXECUTE');
+ and not has_function_privilege('anon','drivex_private.dispatch_before_portal_integration(text,jsonb)','EXECUTE')
+union all select 'backend firewall tables exist',to_regclass('drivex_private.rate_limits') is not null
+ and to_regclass('drivex_private.security_audit_log') is not null
+union all select 'backend firewall cannot bypass dispatcher',not has_function_privilege('authenticated','drivex_private.dispatch_before_firewall(text,jsonb)','EXECUTE')
+ and not has_function_privilege('anon','drivex_private.dispatch_before_firewall(text,jsonb)','EXECUTE')
+union all select 'firewall helpers are private',not has_function_privilege('authenticated','drivex_private.check_rate_limit(text,integer,integer)','EXECUTE')
+ and not has_function_privilege('anon','drivex_private.check_rate_limit(text,integer,integer)','EXECUTE')
+ and not has_function_privilege('authenticated','drivex_private.inspect_request(text,jsonb)','EXECUTE')
+ and not has_function_privilege('anon','drivex_private.inspect_request(text,jsonb)','EXECUTE');

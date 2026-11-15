@@ -24,6 +24,8 @@ test('credential scanner distinguishes public config and fixtures from server cr
  assert.deepEqual(scanText('sb_publishable_fixture sb_secret_fixture rzp_live_fixture'),[]);
  assert.deepEqual(scanText('sb_'+'secret_'+'unusableAuditExample'),['Supabase secret key']);
  assert.deepEqual(scanText('RAZORPAY_'+'KEY_SECRET = "'+'unusableAuditExample'+'"'),['literal server credential']);
+ assert.deepEqual(scanText('MIGRATION_'+'DATABASE_URL = "'+'unusableAuditExample'+'"'),['literal server credential']);
+ assert.deepEqual(scanText('postgres'+'ql://user:password@db.example.test/db'),['Postgres credential URL']);
 });
 test('build rejects secrets without writing output and accepts valid public config',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'drivex-build-'));try{
@@ -80,7 +82,7 @@ test('API preserves session refresh, recovery callback and detailed server error
  t.after(()=>Object.assign(globalThis,original));
  const store=new Map();globalThis.sessionStorage={getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)};
  globalThis.location={origin:'https://fixture.test',hash:'',pathname:'/'};let replaced=false;globalThis.history={replaceState:()=>{replaced=true;}};
- const api=createApi({storage:globalThis.sessionStorage});
+ const api=createApi({config:{supabaseUrl:'https://fixture.supabase.co',publishableKey:'sb_publishable_fixture'},storage:globalThis.sessionStorage});
  let requests=[],refreshes=0;
  globalThis.fetch=async(url,options)=>{
   requests.push([url,JSON.parse(options.body||'{}'),options.headers]);

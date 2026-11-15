@@ -1,6 +1,11 @@
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { validatePublicConfig } from '../dist/public-config.mjs';
+if(process.argv.includes('--neon')) {
+ writeFileSync(resolve('dist/config.mjs'),"// Public provider selection only. Database credentials stay on the server.\nexport const config = Object.freeze({provider:'neon'});\n",'utf8');
+ console.log('Generated Neon provider configuration; no database credentials included.');
+ process.exit(0);
+}
 let supabaseUrl=process.env.SUPABASE_URL||'';
 let publishableKey=process.env.SUPABASE_PUBLISHABLE_KEY||process.env.SUPABASE_ANON_KEY||'';
 if((!supabaseUrl||!publishableKey)&&existsSync('.env')) {

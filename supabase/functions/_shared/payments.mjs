@@ -22,7 +22,7 @@ async function rpc(fetcher, env, name, body, authorization) {
   return data;
 }
 
-export function createOrderHandler({ env, fetcher = fetch }) {
+export function createOrderHandler({ env, fetcher = fetch, callRpc = (name, body, authorization) => rpc(fetcher, env, name, body, authorization) }) {
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
   return async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -36,7 +36,7 @@ export function createOrderHandler({ env, fetcher = fetch }) {
       const key = env('RAZORPAY_KEY_ID') || '';
       if (!/^rzp_(test|live)_[A-Za-z0-9]+$/.test(key) || !env('RAZORPAY_KEY_SECRET')) return json({ error: 'Online payments are not configured. Contact the school.' }, 503, cors);
       if (key.startsWith('rzp_live_') && env('RAZORPAY_ALLOW_LIVE') !== 'true') return json({ error: 'Live payments are disabled.' }, 503, cors);
-      const details = await rpc(fetcher, env, 'drivex', { action: 'get_checkout', payload: { enrollment_id: body.enrollment_id } }, authorization);
+      const details = await callRpc('drivex', { action: 'get_checkout', payload: { enrollment_id: body.enrollment_id } }, authorization);
       if (details.order_id) return json({ order_id: details.order_id, amount: details.amount_paise, currency: 'INR', key_id: key }, 200, cors);
       const response = await fetcher('https://api.razorpay.com/v1/orders', {
         method: 'POST', headers: { Authorization: `Basic ${btoa(`${key}:${env('RAZORPAY_KEY_SECRET')}`)}`, 'Content-Type': 'application/json' },
@@ -45,7 +45,7 @@ export function createOrderHandler({ env, fetcher = fetch }) {
       if (!response.ok) return json({ error: 'Payment provider could not create an order. Try again later.' }, 502, cors);
       const order = await response.json();
       if (order.amount !== details.amount_paise || order.currency !== 'INR' || !/^order_[A-Za-z0-9]+$/.test(order.id || '')) return json({ error: 'Invalid payment provider order.' }, 502, cors);
-      const stored = await rpc(fetcher, env, 'register_payment_order', { p_enrollment_id: body.enrollment_id, p_order_id: order.id, p_amount_paise: order.amount });
+      const stored = await callRpc('register_payment_order', { p_enrollment_id: body.enrollment_id, p_order_id: order.id, p_amount_paise: order.amount });
       return json({ ...stored, key_id: key }, 200, cors);
     } catch (error) {
       return json({ error: error.status ? error.message : 'Payment service is unavailable. Try again later.' }, error.status || 503, cors);
@@ -53,7 +53,7 @@ export function createOrderHandler({ env, fetcher = fetch }) {
   };
 }
 
-export function webhookHandler({ env, fetcher = fetch }) {
+export function webhookHandler({ env, fetcher = fetch, callRpc = (name, body) => rpc(fetcher, env, name, body) }) {
   return async (req) => {
     if (req.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
     try {
@@ -68,7 +68,7 @@ export function webhookHandler({ env, fetcher = fetch }) {
       if (!eventId || !/^pay_[A-Za-z0-9]+$/.test(payment?.id || '') || !/^order_[A-Za-z0-9]+$/.test(payment?.order_id || '') || !Number.isSafeInteger(payment?.amount) || payment.amount <= 0 || payment.currency !== 'INR') return json({ error: 'Invalid payment event.' }, 400);
       const failed = body.event === 'payment.failed';
       if (failed ? payment.status !== 'failed' : payment.status !== 'captured') return json({ error: 'Unexpected payment state.' }, 400);
-      const result = await rpc(fetcher, env, 'process_payment_event', {
+      const result = await callRpc('process_payment_event', {
         p_order_id: payment.order_id, p_payment_id: payment.id, p_amount_paise: payment.amount,
         p_currency: payment.currency, p_event_id: eventId, p_status: failed ? 'failed' : 'paid',
       });

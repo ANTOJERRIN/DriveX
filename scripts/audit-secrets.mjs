@@ -13,9 +13,10 @@ export function scanText(source) {
  for(const match of source.matchAll(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g)) {
   try {if(JSON.parse(Buffer.from(match[0].split('.')[1],'base64url').toString('utf8')).role==='service_role')kinds.add('service-role JWT');}catch{}
  }
- for(const match of source.matchAll(/\b(?:RAZORPAY_KEY_SECRET|RAZORPAY_WEBHOOK_SECRET|SUPABASE_SERVICE_ROLE_KEY|RESEND_API_KEY|NOTIFICATION_WORKER_TOKEN)\s*[:=]\s*["']([^"'\r\n]+)["']/g)) {
+ for(const match of source.matchAll(/\b(?:RAZORPAY_KEY_SECRET|RAZORPAY_WEBHOOK_SECRET|SUPABASE_SERVICE_ROLE_KEY|RESEND_API_KEY|NOTIFICATION_WORKER_TOKEN|DATABASE_URL|MIGRATION_DATABASE_URL|NEON_SERVICE_DATABASE_URL|NEON_API_KEY)\s*[:=]\s*["']([^"'\r\n]+)["']/g)) {
   if(!fixtures.has(match[1])&&!/^(?:\.\.\.|<[^>]+>|YOUR_[A-Z_]+)$/.test(match[1]))kinds.add('literal server credential');
  }
+ if(/\bpostgres(?:ql)?:\/\/[^\s/:@]+:[^\s/@]+@/i.test(source))kinds.add('Postgres credential URL');
  return [...kinds];
 }
 function git(args) {

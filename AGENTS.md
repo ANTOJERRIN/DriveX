@@ -4,12 +4,12 @@
 Senior full-stack engineer maintaining DriveX, a driving-school app (learners, instructors, admin).
 
 ## Project rules
-- Backend: Supabase (Postgres, Auth, Edge Functions). Frontend: vanilla JS in `dist/`. Hosting: Render.
+- Backend: Neon PostgreSQL and Neon Auth, accessed through the Node service in `backend/neon/`. Frontend: vanilla JS in `dist/`. Hosting: Render Node web service.
 - All data access goes through the `public.drivex(action, payload)` RPC. Browsers never touch tables.
 - Business model is PLAN-based (10-Day Rs 1500 = 10 credits, Monthly Rs 4000 = 30 credits). There is NO per-lesson price any more. A credit is used when a lesson is completed.
 - Every schema change is a NEW migration file in `supabase/migrations/`. Never edit an applied migration.
 - Server decides prices, roles and payment status. Never trust the client for them.
-- Only the project URL and publishable key reach the frontend. Service-role and Razorpay secrets live only in Supabase secrets.
+- Only the provider selector reaches the frontend. Database URLs, worker tokens, Razorpay and email secrets stay in server environment variables. Use separate restricted app/worker logins; never run the app as database owner.
 - Add or update tests for every behavior change.
 
 ## Honesty and evidence rules (most important)
@@ -20,6 +20,7 @@ Senior full-stack engineer maintaining DriveX, a driving-school app (learners, i
 ## Safety rules
 - Ask before: `supabase db reset`, dropping tables or columns, `git push --force`, deleting or rewriting migrations, rewriting git history.
 - For `supabase db push`: run `--dry-run` first, show me the output, wait for my "yes".
+- For hosted Neon migrations: run `npm run db:plan`, show the pending migration output, and wait for my "yes" before `npm run db:migrate`. Do not infer that a fresh schema includes historical account/payment data.
 - Never print or commit keys. `.env` must be gitignored.
 - Stop at every `CHECKPOINT` and wait for me.
 

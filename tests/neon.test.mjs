@@ -11,6 +11,8 @@ test('Neon bootstrap replays plan rules and binds each request to a verified ide
  const db=new PGlite({extensions:{btree_gist}});
  try{
   await migrate(db);await migrate(db);
+  const checks=(await db.query(await readFile(new URL('../supabase/verify.sql',import.meta.url),'utf8'))).rows;
+  assert.ok(checks.every(check=>check.ok),JSON.stringify(checks.filter(check=>!check.ok)));
   await db.exec('create role drivex_app login');
   await db.exec(await readFile(new URL('../backend/neon/runtime-grants.sql',import.meta.url),'utf8'));
   await db.exec('set role drivex_app');
